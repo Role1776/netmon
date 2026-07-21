@@ -1,0 +1,7 @@
+.env
+metrics.sql
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+pyrightconfig.json
