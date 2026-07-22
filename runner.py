@@ -107,7 +107,7 @@ class Runner:
 
         subnet = match.group(1)
         result = subprocess.run(
-            ["nmap", "-sn", "-oX", "-", subnet],
+            ["sudo", "-n", "nmap", "-sn", "-oX", "-", subnet],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -115,7 +115,7 @@ class Runner:
         if result.returncode != 0:
             raise RuntimeError(
                 f"Device scan failed (code {result.returncode}): {result.stderr or result.stdout}. "
-                "This scan needs passwordless sudo for nmap to run an ARP scan - see setup instructions."
+                "This scan needs passwordless sudo for nmap (raw-socket ARP access) - see README setup instructions."
             )
         xml_out = result.stdout
 

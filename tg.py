@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import Enum
 import requests
 
-class ChatAction(StrEnum):
+class ChatAction(str, Enum):
     TYPING = "typing"
     UPLOAD_PHOTO = "upload_photo"
     

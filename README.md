@@ -10,7 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-8bc34a?style=for-the-badge" alt="License MIT"></a>
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/uv-managed-DE5FE9?style=for-the-badge&logo=uv&logoColor=white" alt="uv">
   <img src="https://img.shields.io/badge/Telegram-Bot_API-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram">
   <img src="https://img.shields.io/badge/SQLite-Storage-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/Matplotlib-Graphs-11557c?style=for-the-badge" alt="Matplotlib">
@@ -43,12 +44,12 @@ Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 
 | Technology | Purpose |
 | :--- | :--- |
-| **Python 3.11+** | Core runtime |
+| **Python 3.13+** (via `uv`) | Core runtime |
 | **SQLite** | Local metrics persistence (`metrics.sql`) |
 | **`speedtest-cli`** | Network bandwidth and ping measurements |
 | **`nmap`** | Subnet ARP scanning for device discovery |
 | **`matplotlib`** | 24-hour metrics visualization |
-| **OpenAI API** | Sarcastic report & trend analysis generation |
+| **OpenAI-compatible API** | Sarcastic report & trend analysis (cloud OpenAI or a local LLM) |
 | **Telegram API** | Alert and graph report delivery |
 
 ---
@@ -56,9 +57,10 @@ Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 ## Requirements
 
 * **OS:** macOS or Linux (`nmap --iflist` required; Windows not supported out of the box).
-* **Python:** 3.11+
+* **[uv](https://docs.astral.sh/uv/)** — manages the Python version, virtualenv, and locked dependencies for you. No manual `python3`/`venv`/`pip` juggling.
 * **System Binaries:** `nmap` and `speedtest-cli` installed system-wide.
-* **Tokens:** Telegram Bot Token, Telegram Chat ID, and OpenAI-compatible API key.
+* **Passwordless `sudo` for `nmap`** — device counting needs a real ARP scan (raw sockets), which requires root; see one-time setup below.
+* **Tokens:** Telegram Bot Token, Telegram Chat ID, and an API key for your OpenAI-compatible provider (not needed if you point `AI_BASE_URL` at a local LLM server).
 
 ---
 
@@ -76,17 +78,36 @@ brew install nmap speedtest-cli
 sudo apt update && sudo apt install -y nmap speedtest-cli
 ```
 
-### 2. Clone & Setup Environment
+### 2. Allow Passwordless `nmap` (one-time)
+
+Device counting runs `nmap` as root for a real ARP scan — without it, host discovery silently falls back to ordinary TCP probing and undercounts devices that don't answer on common ports. Since the bot runs unattended, `sudo` needs to work without a password prompt on every cycle:
+
+```bash
+echo "$(whoami) ALL=(root) NOPASSWD: $(command -v nmap)" | sudo tee /etc/sudoers.d/netmon-nmap
+sudo chmod 440 /etc/sudoers.d/netmon-nmap
+```
+
+This grants passwordless `sudo` only for the `nmap` binary — not your whole account.
+
+### 3. Clone & Setup Environment
+
+Install [`uv`](https://docs.astral.sh/uv/) if you don't have it yet:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then:
 
 ```bash
 git clone https://github.com/Role1776/netmon.git
 cd netmon
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
-### 3. Configure `.env`
+`uv sync` downloads the pinned Python version (see `.python-version`) if you don't already have it, creates `.venv`, and installs the exact locked dependency versions from `uv.lock`. No system `python3`, no manual venv activation.
+
+### 4. Configure `.env`
 
 Copy the template file and fill in your secrets:
 
@@ -98,18 +119,23 @@ cp .env.example .env
 
 | Variable | Description |
 | :--- | :--- |
-| `AI_API_KEY` | Your LLM provider API key |
-| `AI_MODEL` | Model name (e.g. `gpt-4o-mini`) |
-| `AI_BASE_URL` | Base API URL (e.g., `https://api.openai.com/v1`) |
+| `AI_API_KEY` | Your LLM provider API key (any string works for most local servers) |
+| `AI_MODEL` | Model name (e.g. `gpt-4o-mini`, or a local model name — see below) |
+| `AI_BASE_URL` | Base API URL (e.g., `https://api.openai.com/v1`, or your local server's URL) |
 | `TG_BOT_TOKEN` | Telegram bot token from `@BotFather` |
 | `TG_CHAT_ID` | Your Telegram Chat ID |
 | `DB_PATH` | SQLite database file path (e.g. `metrics.sql`) |
 
-### 4. Run the Bot
+> [!TIP]
+> **You're not locked into OpenAI.** `ai.py` talks to any OpenAI-compatible endpoint, so a local inference server (e.g. [Ollama](https://ollama.com), LM Studio) works too — just point `AI_BASE_URL` at it. For report quality that holds up, use a model with **at least ~7B parameters**; a solid local pick is **Gemma 4 12B at 4-bit (QAT) quantization** (`gemma4:12b-it-qat` via Ollama), which fits comfortably on 16GB of RAM.
+
+### 5. Run the Bot
 
 ```bash
-python3 main.py
+uv run main.py
 ```
+
+`uv run` always uses this project's own `.venv` and pinned Python version, so it can't accidentally run against your system `python3`.
 
 > [!TIP]
 > Run the bot inside `tmux`/`screen` or set it up as a system service (`systemd`/`launchd`) to keep it running 24/7 in the background.
@@ -186,6 +212,8 @@ netmon/
 ├── ai.py           # OpenAI API client & sarcastic text generator
 ├── tg.py           # Telegram bot dispatch helper
 ├── config.py       # Environment variable validation & config
+├── pyproject.toml  # Project metadata & dependencies
+├── uv.lock         # Locked, reproducible dependency versions
 └── LICENSE         # MIT License file
 ```
 

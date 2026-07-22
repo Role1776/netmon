@@ -1,0 +1,14 @@
+[project]
+name = "netmon"
+version = "0.1.0"
+description = "Self-hosted local network monitor with 24-hour speed charts & sarcastic AI commentary delivered straight to Telegram."
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib",
+    "openai",
+    "pydantic",
+    "python-dotenv",
+    "requests",
+    "scapy",
+    "uuid7",
+]
