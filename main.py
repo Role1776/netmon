@@ -120,7 +120,7 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 <b>Current status:</b> {status_text}"""
 
-SLEEP_TIME = 3600
+SLEEP_TIME = 1800
 
 log = logging.getLogger("netmon")
 
@@ -172,13 +172,13 @@ def main():
                 database.add_speedtest(speedtest)
             log.info(f"Speedtest has been added: {speedtest}")
 
-            if counter >= 4: #send a detailed report with graph every 4 hours
+            if counter >= 8: #send a detailed report with graph every 4 hours
                 metrics, device_counts = database.get_metrics_with_device_counts()
 
                 user_message = ""
                 for m, device_count in zip(metrics, device_counts):
                     user_message += REPORT_USER_TEMPLATE.format(
-                        timestamp=m.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                         download=round(m.download / 10**6, 1),
                         upload=round(m.upload / 10**6, 1),
                         ping=m.ping,
@@ -214,7 +214,7 @@ def main():
                     status_text = "At least it works, I guess"
 
                 msg = MINI_REPORT_TEMPLATE.format(
-                    timestamp=metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                     download=dl_speed,
                     upload=metric.upload / 10**6,
                     ping=ping,
