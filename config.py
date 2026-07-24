@@ -6,15 +6,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Config:
-    def __init__(self, ai_api_key: str, db_path: str, model: str, base_url: str, tg_bot_token: str, tg_chat_id: str):
+    def __init__(
+        self,
+        ai_api_key: str,
+        db_path: str,
+        model: str,
+        base_url: str,
+        notifier: str,
+        tg_bot_token: str = "",
+        tg_chat_id: str = "",
+        discord_webhook_url: str = "",
+    ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
         self.model: str = model
         self.base_url: str = base_url
+        self.notifier: str = notifier
         self.tg_bot_token: str = tg_bot_token
         self.tg_chat_id: str = tg_chat_id
+        self.discord_webhook_url: str = discord_webhook_url
 
-    
     @staticmethod
     def _parse_args():
         parser = argparse.ArgumentParser(description="App configuration")
@@ -24,7 +35,7 @@ class Config:
             default=".env",
             help="Path to the .env file (default: .env)"
         )
-        return parser.parse_args()    
+        return parser.parse_args()
 
     @classmethod
     def init(cls):
@@ -35,8 +46,7 @@ class Config:
         db_path = os.getenv("DB_PATH", "")
         model = os.getenv("AI_MODEL", "")
         base_url = os.getenv("AI_BASE_URL", "")
-        tg_bot_token = os.getenv("TG_BOT_TOKEN", "")
-        tg_chat_id = os.getenv("TG_CHAT_ID", "")
+        notifier = os.getenv("NOTIFIER", "telegram").strip().lower()
 
         if ai_key.strip() == "":
             raise RuntimeError("AI_API_KEY not found or empty in environment")
@@ -46,9 +56,24 @@ class Config:
             raise RuntimeError("MODEL not found or empty in environment")
         if base_url.strip() == "":
             raise RuntimeError("BASE_URL not found or empty in environment")
-        if tg_bot_token.strip() == "":
-            raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
-        if tg_chat_id.strip() == "":
-            raise RuntimeError("TG_CHAT_ID not found or empty in environment")
-        
-        return cls(ai_key, db_path, model, base_url, tg_bot_token, tg_chat_id)
+
+        if notifier not in ("telegram", "discord"):
+            raise RuntimeError(f"NOTIFIER must be 'telegram' or 'discord', got: {notifier!r}")
+
+        tg_bot_token = os.getenv("TG_BOT_TOKEN", "")
+        tg_chat_id = os.getenv("TG_CHAT_ID", "")
+        discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+
+        if notifier == "telegram":
+            if tg_bot_token.strip() == "":
+                raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
+            if tg_chat_id.strip() == "":
+                raise RuntimeError("TG_CHAT_ID not found or empty in environment")
+        else:
+            if discord_webhook_url.strip() == "":
+                raise RuntimeError("DISCORD_WEBHOOK_URL not found or empty in environment")
+
+        return cls(
+            ai_key, db_path, model, base_url, notifier,
+            tg_bot_token, tg_chat_id, discord_webhook_url,
+        )

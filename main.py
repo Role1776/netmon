@@ -6,6 +6,7 @@ import config as cfg
 import sqlite
 import ai
 import tg
+import discord_hook
 import time
 import models
 import runner
@@ -144,7 +145,10 @@ def main():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     conf = cfg.Config.init()
-    t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id) 
+    if conf.notifier == "discord":
+        t = discord_hook.Bot.init(conf.discord_webhook_url)
+    else:
+        t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id)
     r = runner.Runner()
 
     counter = 0

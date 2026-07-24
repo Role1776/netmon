@@ -222,3 +222,11 @@ netmon/
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
+
+## Discord Support (Optional)
+
+By default netmon sends alerts via Telegram. To use Discord instead, create an
+[Incoming Webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks)
+in your target channel and set:
+NOTIFIER=discord
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
