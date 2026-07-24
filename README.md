@@ -230,3 +230,18 @@ By default netmon sends alerts via Telegram. To use Discord instead, create an
 in your target channel and set:
 NOTIFIER=discord
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
+
+## Known Limitation: speedtest-cli Throughput Cap
+
+The classic `speedtest-cli` Python tool (still the default expected by
+`runner.py`) is single-threaded. On connections above roughly 500 Mbps,
+the tool itself becomes the bottleneck — not your line — and can
+under-report real throughput by 5-10x on multi-gigabit connections.
+
+If your results look suspiciously low compared to your known line speed,
+run:
+sudo bash install-ookla-speedtest.sh
+
+This installs Ookla's official CLI (multi-threaded, built for gigabit+
+links) and wraps it so its output matches the JSON format netmon already
+expects — no application code changes required.
