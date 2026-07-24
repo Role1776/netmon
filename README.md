@@ -5,7 +5,7 @@
 <h1 align="center">netmon</h1>
 
 <p align="center">
-  <b>Self-hosted local network monitor with 24-hour speed charts & sarcastic AI commentary delivered straight to Telegram.</b>
+  <b>Self-hosted local network monitor with 24-hour speed charts & sarcastic AI commentary delivered straight to Telegram or Discord.</b>
 </p>
 
 <p align="center">
@@ -13,18 +13,19 @@
   <img src="https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/uv-managed-DE5FE9?style=for-the-badge&logo=uv&logoColor=white" alt="uv">
   <img src="https://img.shields.io/badge/Telegram-Bot_API-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram">
+  <img src="https://img.shields.io/badge/Discord-Webhook-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord">
   <img src="https://img.shields.io/badge/SQLite-Storage-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/Matplotlib-Graphs-11557c?style=for-the-badge" alt="Matplotlib">
 </p>
 
 ---
 
-A lightweight local bot that runs a speed test on your network every hour, scans active devices on your LAN using `nmap`, and logs everything to a local SQLite database. 
+A lightweight local bot that runs a speed test on your network every hour, scans active devices on your LAN using `nmap`, and logs everything to a local SQLite database.
 
 Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend graph and a sarcastic, LLM-generated commentary on your network's behavior (*"someone's hogging the bandwidth again"*).
 
 > [!NOTE]
-> **100% Private & Self-Hosted:** No external metric servers involved — everything runs locally on your machine or Raspberry Pi. Only text reports and graph images are dispatched to your Telegram chat.
+> **100% Private & Self-Hosted:** No external metric servers involved — everything runs locally on your machine or Raspberry Pi. Only text reports and graph images are dispatched to your chosen notifier (Telegram or Discord).
 
 ---
 
@@ -32,10 +33,10 @@ Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend g
 
 Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 
-1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli`.
+1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (or the optional [Ookla CLI backend](#speed-test-backend-default-vs-ookla) for accurate results on fast connections).
 2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
 3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
-4. **Status Alert:** Sends a concise status update to Telegram (*"all good"* or *"line is dying"*).
+4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
 5. **24h AI Report:** Every 4th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
 
 ---
@@ -46,11 +47,11 @@ Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 | :--- | :--- |
 | **Python 3.13+** (via `uv`) | Core runtime |
 | **SQLite** | Local metrics persistence (`metrics.sql`) |
-| **`speedtest-cli`** | Network bandwidth and ping measurements |
+| **`speedtest-cli`** | Network bandwidth and ping measurements (Ookla CLI optional, see below) |
 | **`nmap`** | Subnet ARP scanning for device discovery |
 | **`matplotlib`** | 24-hour metrics visualization |
 | **OpenAI-compatible API** | Sarcastic report & trend analysis (cloud OpenAI or a local LLM) |
-| **Telegram API** | Alert and graph report delivery |
+| **Telegram API / Discord Webhooks** | Alert and graph report delivery |
 
 ---
 
@@ -60,7 +61,7 @@ Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 * **[uv](https://docs.astral.sh/uv/)** — manages the Python version, virtualenv, and locked dependencies for you. No manual `python3`/`venv`/`pip` juggling.
 * **System Binaries:** `nmap` and `speedtest-cli` installed system-wide.
 * **Passwordless `sudo` for `nmap`** — device counting needs a real ARP scan (raw sockets), which requires root; see one-time setup below.
-* **Tokens:** Telegram Bot Token, Telegram Chat ID, and an API key for your OpenAI-compatible provider (not needed if you point `AI_BASE_URL` at a local LLM server).
+* **Tokens:** either a Telegram Bot Token + Chat ID, *or* a Discord Webhook URL (see [Notifications](#notifications-telegram-or-discord)), plus an API key for your OpenAI-compatible provider (not needed if you point `AI_BASE_URL` at a local LLM server).
 
 ---
 
@@ -77,6 +78,9 @@ brew install nmap speedtest-cli
 ```bash
 sudo apt update && sudo apt install -y nmap speedtest-cli
 ```
+
+> [!TIP]
+> On fast connections (roughly 500 Mbps+), `speedtest-cli` under-reports throughput — see [Speed Test Backend](#speed-test-backend-default-vs-ookla) for a drop-in fix.
 
 ### 2. Allow Passwordless `nmap` (one-time)
 
@@ -122,8 +126,10 @@ cp .env.example .env
 | `AI_API_KEY` | Your LLM provider API key (any string works for most local servers) |
 | `AI_MODEL` | Model name (e.g. `gpt-4o-mini`, or a local model name — see below) |
 | `AI_BASE_URL` | Base API URL (e.g., `https://api.openai.com/v1`, or your local server's URL) |
-| `TG_BOT_TOKEN` | Telegram bot token from `@BotFather` |
-| `TG_CHAT_ID` | Your Telegram Chat ID |
+| `NOTIFIER` | `telegram` (default) or `discord` — picks which service receives alerts |
+| `TG_BOT_TOKEN` | Telegram bot token from `@BotFather` — required if `NOTIFIER=telegram` |
+| `TG_CHAT_ID` | Your Telegram Chat ID — required if `NOTIFIER=telegram` |
+| `DISCORD_WEBHOOK_URL` | Discord channel webhook URL — required if `NOTIFIER=discord` |
 | `DB_PATH` | SQLite database file path (e.g. `metrics.sql`) |
 
 > [!TIP]
@@ -139,6 +145,64 @@ uv run main.py
 
 > [!TIP]
 > Run the bot inside `tmux`/`screen` or set it up as a system service (`systemd`/`launchd`) to keep it running 24/7 in the background.
+
+---
+
+## Notifications: Telegram or Discord
+
+netmon supports two notification backends, selected via the `NOTIFIER` variable in `.env`. Only one is needed.
+
+### Telegram (default)
+
+1. Message [`@BotFather`](https://t.me/botfather) on Telegram and send `/newbot`, following the prompts to get a **bot token**.
+2. Get your **Chat ID** — the simplest way is to message your new bot, then visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser and read the `chat.id` field from the JSON response.
+3. In `.env`:
+   ```
+   NOTIFIER=telegram
+   TG_BOT_TOKEN=123456789:AAHfoo...
+   TG_CHAT_ID=987654321
+   ```
+
+If `NOTIFIER` is left unset, netmon defaults to Telegram, so existing setups keep working with no changes.
+
+### Discord
+
+1. In your target Discord channel: **Server Settings → Integrations → Webhooks → New Webhook**, then copy the webhook URL. No bot invite or permissions setup needed.
+2. In `.env`:
+   ```
+   NOTIFIER=discord
+   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
+   ```
+
+Discord delivery reuses the same report content as Telegram — the existing HTML formatting (`<b>`, `<code>`, `<pre>`) is automatically converted to Discord markdown, so reports render correctly in either service without any changes to the AI prompt.
+
+> [!WARNING]
+> Treat both the Telegram bot token and the Discord webhook URL as secrets — anyone with either can post messages through your bot/webhook. Don't commit them to version control (`.env` is already git-ignored).
+
+---
+
+## Speed Test Backend: Default vs Ookla
+
+By default netmon shells out to `speedtest-cli` (the classic Python tool by sivel), matching the `speedtest --secure --single --json` call in `runner.py`. This works fine for most home connections, but it is **single-threaded**, so on connections above roughly 500 Mbps the tool itself — not your actual line — becomes the bottleneck. On multi-gigabit fiber, it can under-report real throughput by 5–10x.
+
+If your reported speeds look suspiciously low compared to your known line speed, switch to **Ookla's official CLI** (multi-threaded, written in Go, built for gigabit+ links):
+
+```bash
+sudo bash install-ookla-speedtest.sh
+```
+
+This script:
+1. Installs Ookla's official `speedtest` CLI from their apt repository.
+2. Renames it to `speedtest-ookla` to avoid clashing with the legacy tool.
+3. Installs a small wrapper at `/usr/bin/speedtest` that runs the Ookla CLI and re-emits its JSON output in the schema `runner.py` already expects.
+
+No application code changes are required — netmon keeps calling `speedtest --secure --single --json` exactly as before, now backed by Ookla's engine. Verify it worked:
+
+```bash
+speedtest --secure --single --json | python3 -m json.tool
+```
+
+You should see `download`/`upload` figures (in bits/sec) consistent with your actual line speed.
 
 ---
 
@@ -202,19 +266,21 @@ Expect periodic speed drops whenever local freeloaders stream 4K movies or the I
 
 ```text
 netmon/
-├── assets/         # Logo & documentation media assets
-├── graphs/         # Generated 24h matplotlib graph images
-├── main.py         # Main execution loop & orchestrator
-├── runner.py       # Speedtest-cli and nmap scan execution & parsing
-├── sqlite.py       # SQLite database operations & schema management
-├── models.py       # Domain data models (NetworkMetric, SpeedTest)
-├── graphs.py       # Matplotlib graph rendering engine
-├── ai.py           # OpenAI API client & sarcastic text generator
-├── tg.py           # Telegram bot dispatch helper
-├── config.py       # Environment variable validation & config
-├── pyproject.toml  # Project metadata & dependencies
-├── uv.lock         # Locked, reproducible dependency versions
-└── LICENSE         # MIT License file
+├── assets/                        # Logo & documentation media assets
+├── graphs/                        # Generated 24h matplotlib graph images
+├── main.py                        # Main execution loop & orchestrator
+├── runner.py                      # Speedtest-cli and nmap scan execution & parsing
+├── sqlite.py                      # SQLite database operations & schema management
+├── models.py                      # Domain data models (NetworkMetric, SpeedTest)
+├── graphs.py                      # Matplotlib graph rendering engine
+├── ai.py                          # OpenAI API client & sarcastic text generator
+├── tg.py                          # Telegram bot dispatch helper
+├── discord_hook.py                # Discord webhook dispatch helper
+├── config.py                      # Environment variable validation & config
+├── install-ookla-speedtest.sh     # Optional Ookla CLI installer/wrapper
+├── pyproject.toml                 # Project metadata & dependencies
+├── uv.lock                        # Locked, reproducible dependency versions
+└── LICENSE                        # MIT License file
 ```
 
 ---
@@ -222,26 +288,3 @@ netmon/
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
-
-## Discord Support (Optional)
-
-By default netmon sends alerts via Telegram. To use Discord instead, create an
-[Incoming Webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks)
-in your target channel and set:
-NOTIFIER=discord
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
-
-## Known Limitation: speedtest-cli Throughput Cap
-
-The classic `speedtest-cli` Python tool (still the default expected by
-`runner.py`) is single-threaded. On connections above roughly 500 Mbps,
-the tool itself becomes the bottleneck — not your line — and can
-under-report real throughput by 5-10x on multi-gigabit connections.
-
-If your results look suspiciously low compared to your known line speed,
-run:
-sudo bash install-ookla-speedtest.sh
-
-This installs Ookla's official CLI (multi-threaded, built for gigabit+
-links) and wraps it so its output matches the JSON format netmon already
-expects — no application code changes required.
