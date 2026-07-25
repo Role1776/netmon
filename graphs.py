@@ -23,7 +23,11 @@ class NetmonGraph:
         pings: List[float] = []
 
         for d in self.data:
-            timestamps.append(float(mdates.date2num(d.timestamp)))
+            # date2num normalises any tz-aware datetime back to UTC, so the
+            # tzinfo has to be dropped after converting, otherwise the axis
+            # silently stays in UTC while the report text is local.
+            local_ts = d.timestamp.astimezone().replace(tzinfo=None)
+            timestamps.append(float(mdates.date2num(local_ts)))
             downloads.append(d.download / 10**6)
             uploads.append(d.upload / 10**6)
             pings.append(d.ping)
