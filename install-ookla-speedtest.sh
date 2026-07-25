@@ -35,6 +35,15 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+for dep in curl tar; do
+    if ! command -v "${dep}" >/dev/null 2>&1; then
+        echo "Required command '${dep}' not found." >&2
+        echo "Debian/Ubuntu: sudo apt install ${dep}" >&2
+        echo "Arch:          sudo pacman -S ${dep}" >&2
+        exit 1
+    fi
+done
+
 OOKLA_VERSION="${OOKLA_VERSION:-1.2.0}"
 
 ARCH="$(uname -m)"
