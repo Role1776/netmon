@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REQUEST_TIMEOUT = 10
+DEFAULT_REQUEST_TIMEOUT = 30
 
 class Config:
     def __init__(
