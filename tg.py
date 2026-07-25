@@ -1,10 +1,6 @@
-from enum import Enum
 import requests
 
-class ChatAction(str, Enum):
-    TYPING = "typing"
-    UPLOAD_PHOTO = "upload_photo"
-    
+from notifier import ChatAction
 
 class Bot:
     def __init__(self, bot_token: str, chat_id: str):
@@ -15,6 +11,7 @@ class Bot:
     def init(cls, bot_token: str, chat_id: str) -> "Bot":
         if bot_token.strip() == "" or chat_id.strip() == "":
             raise ValueError("Bot token and chat ID cannot be empty")
+
         return cls(bot_token, chat_id)
 
     def send_message(self, message: str, parse_mode: str = "HTML") -> str:
@@ -45,12 +42,12 @@ class Bot:
         if response.status_code != 200:
             raise RuntimeError(f"Failed to send photo: {response.text}")
         return response.text
-    
+
     def send_chat_action(self, action: ChatAction = ChatAction.TYPING) -> str:
         url = f"https://api.telegram.org/bot{self.bot_token}/sendChatAction"
         payload = {
             "chat_id": self.chat_id,
-            "action": action.value if hasattr(action, 'value') else action
+            "action": action
         }
         response = requests.post(url, data=payload)
 

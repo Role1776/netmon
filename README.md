@@ -277,6 +277,7 @@ netmon/
 ├── tg.py                          # Telegram bot dispatch helper
 ├── discord_hook.py                # Discord webhook dispatch helper
 ├── config.py                      # Environment variable validation & config
+├── notifier.py                    # Notifier protocol & shared chat-action enum
 ├── install-ookla-speedtest.sh     # Optional Ookla CLI installer/wrapper
 ├── pyproject.toml                 # Project metadata & dependencies
 ├── uv.lock                        # Locked, reproducible dependency versions

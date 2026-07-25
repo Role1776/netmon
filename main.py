@@ -10,6 +10,7 @@ import discord_hook
 import time
 import models
 import runner
+from notifier import ChatAction, Notifier
 
 REPORT_SYSTEM_PROMPT = """
 You are a sarcastic, cynical network analyst bot. Your job is to output a short network speed test and 24-hour trend report in Telegram HTML format.
@@ -145,6 +146,7 @@ def main():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     conf = cfg.Config.init()
+    t: Notifier
     if conf.notifier == "discord":
         t = discord_hook.Bot.init(conf.discord_webhook_url)
     else:
@@ -160,7 +162,7 @@ def main():
         log.info("The bot has been started.")
         while True:
 
-            t.send_chat_action(tg.ChatAction.TYPING)
+            t.send_chat_action(ChatAction.TYPING)
 
             metric = r.run_speedtest()
             all_devices = r.run_devices_scan()
@@ -190,11 +192,11 @@ def main():
                         device_count=device_count
                     ) + "\n"
         
-                t.send_chat_action(tg.ChatAction.TYPING)
+                t.send_chat_action(ChatAction.TYPING)
                 report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
                 report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
 
-                t.send_chat_action(tg.ChatAction.UPLOAD_PHOTO)
+                t.send_chat_action(ChatAction.UPLOAD_PHOTO)
                 graph = graphs.NetmonGraph(metrics, device_counts)
                 graph_name = graph.plot()
 
