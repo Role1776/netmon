@@ -161,78 +161,97 @@ def main():
     ):
         log.info("The bot has been started.")
         while True:
-
-            t.send_chat_action(ChatAction.TYPING)
-
-            metric = r.run_speedtest()
-            all_devices = r.run_devices_scan()
-
-            with database.transaction():
-                database.add_metric(metric)
-                device_scan_id = database.add_devices(all_devices)
-                speedtest = models.SpeedTest.create(metric.id, device_scan_id)
-                database.add_speedtest(speedtest)
-            log.info(f"Speedtest has been added: {speedtest}")
-
-            if counter >= 8: #send a detailed report with graph every 4 hours
-                metrics, device_counts = database.get_metrics_with_device_counts()
-
-                user_message = ""
-                for m, device_count in zip(metrics, device_counts):
-                    user_message += REPORT_USER_TEMPLATE.format(
-                        timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                        download=round(m.download / 10**6, 1),
-                        upload=round(m.upload / 10**6, 1),
-                        ping=m.ping,
-                        client=m.client,
-                        server=m.server,
-                        download_mb=round(m.bytes_received / 10**6, 1),
-                        upload_mb=round(m.bytes_sent / 10**6, 1),
-                        share=m.share,
-                        device_count=device_count
-                    ) + "\n"
-        
+            try:
                 t.send_chat_action(ChatAction.TYPING)
-                report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
-                report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
 
-                t.send_chat_action(ChatAction.UPLOAD_PHOTO)
-                graph = graphs.NetmonGraph(metrics, device_counts)
-                graph_name = graph.plot()
+                metric = r.run_speedtest()
+                all_devices = r.run_devices_scan()
 
-                with open(graph_name, "rb") as f:
-                    t.send_photo(f.read(), report)
-                
-                log.info("Detailed report has been sent.")
-                counter = 0
-            else:
-                dl_speed = metric.download / 10**6
-                ping = metric.ping
-                if dl_speed >= 150 and ping <= 20:
-                    status_text = "Good speed and low latency"
-                elif dl_speed < 60 or ping > 40:
-                    status_text = "A bunch of idiots decided to stream 4K movies all at once, or the ISP's mice were busy chewing on the fiber line again, whatever"
+                with database.transaction():
+                    database.add_metric(metric)
+                    device_scan_id = database.add_devices(all_devices)
+                    speedtest = models.SpeedTest.create(metric.id, device_scan_id)
+                    database.add_speedtest(speedtest)
+                log.info(f"Speedtest has been added: {speedtest}")
+
+                if counter >= 8: #send a detailed report with graph every 4 hours
+                    metrics, device_counts = database.get_metrics_with_device_counts()
+
+                    user_message = ""
+                    for m, device_count in zip(metrics, device_counts):
+                        user_message += REPORT_USER_TEMPLATE.format(
+                            timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                            download=round(m.download / 10**6, 1),
+                            upload=round(m.upload / 10**6, 1),
+                            ping=m.ping,
+                            client=m.client,
+                            server=m.server,
+                            download_mb=round(m.bytes_received / 10**6, 1),
+                            upload_mb=round(m.bytes_sent / 10**6, 1),
+                            share=m.share,
+                            device_count=device_count
+                        ) + "\n"
+
+                    t.send_chat_action(ChatAction.TYPING)
+                    try:
+                        report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
+                        report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+                    except Exception as e:
+                        # AI backend down/unreachable/misconfigured: don't lose the
+                        # whole report, just send the graph with a plain notice
+                        # instead of a sarcastic AI-written one.
+                        log.error(f"AI report generation failed, sending graph without commentary: {e}")
+                        report = (
+                            "<b>Network Speed Test Report (24h Analysis)</b>\n\n"
+                            "<i>AI commentary unavailable this cycle — the AI backend "
+                            "could not be reached. Raw graph data is attached below.</i>"
+                        )
+
+                    t.send_chat_action(ChatAction.UPLOAD_PHOTO)
+                    graph = graphs.NetmonGraph(metrics, device_counts)
+                    graph_name = graph.plot()
+
+                    with open(graph_name, "rb") as f:
+                        t.send_photo(f.read(), report)
+
+                    log.info("Detailed report has been sent.")
+                    counter = 0
                 else:
-                    status_text = "At least it works, I guess"
+                    dl_speed = metric.download / 10**6
+                    ping = metric.ping
+                    if dl_speed >= 150 and ping <= 20:
+                        status_text = "Good speed and low latency"
+                    elif dl_speed < 60 or ping > 40:
+                        status_text = "A bunch of idiots decided to stream 4K movies all at once, or the ISP's mice were busy chewing on the fiber line again, whatever"
+                    else:
+                        status_text = "At least it works, I guess"
 
-                msg = MINI_REPORT_TEMPLATE.format(
-                    timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                    download=dl_speed,
-                    upload=metric.upload / 10**6,
-                    ping=ping,
-                    device_count=len(all_devices),
-                    client=metric.client,
-                    server=metric.server,
-                    download_mb=metric.bytes_received / 10**6,
-                    upload_mb=metric.bytes_sent / 10**6,
-                    status_text=status_text,
-                )
-                t.send_message(msg)
-                log.info("Mini report has been sent.")
-            
-            counter +=1
-            
-            
+                    msg = MINI_REPORT_TEMPLATE.format(
+                        timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                        download=dl_speed,
+                        upload=metric.upload / 10**6,
+                        ping=ping,
+                        device_count=len(all_devices),
+                        client=metric.client,
+                        server=metric.server,
+                        download_mb=metric.bytes_received / 10**6,
+                        upload_mb=metric.bytes_sent / 10**6,
+                        status_text=status_text,
+                    )
+                    t.send_message(msg)
+                    log.info("Mini report has been sent.")
+
+                counter += 1
+
+            except Exception as e:
+                # Catch-all so a failure anywhere in the cycle (speedtest, nmap,
+                # database, AI, or notifier delivery) logs and retries next cycle
+                # instead of crashing the whole process. A crash here would reset
+                # `counter` to 0 on restart, so a persistently-unreachable AI
+                # backend would otherwise crash-loop the bot forever instead of
+                # just degrading gracefully.
+                log.error(f"Unhandled error during monitoring cycle, will retry next cycle: {e}", exc_info=True)
+
             time.sleep(SLEEP_TIME)
 
 if __name__ == "__main__":
