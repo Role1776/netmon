@@ -33,7 +33,7 @@ class NetmonGraph:
         ax = plt.gca()
         # MaxNLocator picks a "nice" tick step automatically based on the data's
         # actual range, so it stays readable whether speeds are tens of Mbps
-        # (older speedtest-cli backend) or thousands (Ookla backend on fast lines) —
+        # on a slow connection or thousands on a gigabit line —
         # a fixed-interval locator would otherwise pack in dozens of overlapping
         # labels once values exceed a few hundred.
         ax.yaxis.set_major_locator(MaxNLocator(nbins=10, min_n_ticks=5))

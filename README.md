@@ -33,7 +33,7 @@ Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend g
 
 Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 
-1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (or the optional [Ookla CLI backend](#speed-test-backend-default-vs-ookla) for accurate results on fast connections).
+1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (see [the note on measurement mode](#a-note-on-measurement-mode)).
 2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
 3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
 4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
@@ -47,7 +47,7 @@ Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
 | :--- | :--- |
 | **Python 3.13+** (via `uv`) | Core runtime |
 | **SQLite** | Local metrics persistence (`metrics.sql`) |
-| **`speedtest-cli`** | Network bandwidth and ping measurements (Ookla CLI optional, see below) |
+| **`speedtest-cli`** | Network bandwidth and ping measurements |
 | **`nmap`** | Subnet ARP scanning for device discovery |
 | **`matplotlib`** | 24-hour metrics visualization |
 | **OpenAI-compatible API** | Sarcastic report & trend analysis (cloud OpenAI or a local LLM) |
@@ -78,9 +78,6 @@ brew install nmap speedtest-cli
 ```bash
 sudo apt update && sudo apt install -y nmap speedtest-cli
 ```
-
-> [!TIP]
-> On fast connections (roughly 500 Mbps+), `speedtest-cli` under-reports throughput — see [Speed Test Backend](#speed-test-backend-default-vs-ookla) for a drop-in fix.
 
 ### 2. Allow Passwordless `nmap` (one-time)
 
@@ -182,28 +179,18 @@ Discord delivery reuses the same report content as Telegram — the existing HTM
 
 ---
 
-## Speed Test Backend: Default vs Ookla
+## A Note on Measurement Mode
 
-By default netmon shells out to `speedtest-cli` (the classic Python tool by sivel), matching the `speedtest --secure --single --json` call in `runner.py`. This works fine for most home connections, but it is **single-threaded**, so on connections above roughly 500 Mbps the tool itself — not your actual line — becomes the bottleneck. On multi-gigabit fiber, it can under-report real throughput by 5–10x.
+netmon runs `speedtest --secure --single --json` (see `runner.py`) — the `--single` flag means the test uses **one TCP connection**. This is deliberate: a single stream approximates what one real application on your network would actually get, since it is subject to the same window-size and packet-loss limits any ordinary download faces.
 
-If your reported speeds look suspiciously low compared to your known line speed, switch to **Ookla's official CLI** (multi-threaded, written in Go, built for gigabit+ links):
+Multi-threaded speed tests (including Ookla's official CLI, and the speedtest.net web UI) open many parallel connections instead. That measures something different — the practical ceiling of your line — and will report noticeably higher numbers on fast connections. Neither figure is "wrong"; they answer different questions.
 
-```bash
-sudo bash install-ookla-speedtest.sh
-```
+Two consequences worth knowing:
 
-This script:
-1. Installs Ookla's official `speedtest` CLI from their apt repository.
-2. Renames it to `speedtest-ookla` to avoid clashing with the legacy tool.
-3. Installs a small wrapper at `/usr/bin/speedtest` that runs the Ookla CLI and re-emits its JSON output in the schema `runner.py` already expects.
+* **Don't compare netmon's numbers directly against speedtest.net in a browser.** The browser test is multi-threaded and will read higher. That gap is methodology, not a fault in your line.
+* **On very fast links (roughly 500 Mbps+), expect single-stream figures to sit well below your subscribed speed.** Beyond the methodology gap, `speedtest-cli` is pure Python, so at gigabit speeds its own CPU overhead starts contributing too.
 
-No application code changes are required — netmon keeps calling `speedtest --secure --single --json` exactly as before, now backed by Ookla's engine. Verify it worked:
-
-```bash
-speedtest --secure --single --json | python3 -m json.tool
-```
-
-You should see `download`/`upload` figures (in bits/sec) consistent with your actual line speed.
+Since netmon exists to track *trends*, consistency matters more than peak numbers: keep one measurement method for the lifetime of your database. Swapping the backend mid-history puts a step change in your 24-hour graph that the AI commentary will faithfully report as a real speed jump.
 
 ---
 
@@ -279,7 +266,6 @@ netmon/
 ├── discord_hook.py                # Discord webhook dispatch helper
 ├── config.py                      # Environment variable validation & config
 ├── notifier.py                    # Notifier protocol & shared chat-action enum
-├── install-ookla-speedtest.sh     # Optional Ookla CLI installer/wrapper
 ├── pyproject.toml                 # Project metadata & dependencies
 ├── uv.lock                        # Locked, reproducible dependency versions
 └── LICENSE                        # MIT License file
