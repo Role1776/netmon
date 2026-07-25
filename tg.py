@@ -3,16 +3,17 @@ import requests
 from notifier import ChatAction
 
 class Bot:
-    def __init__(self, bot_token: str, chat_id: str):
+    def __init__(self, bot_token: str, chat_id: str, timeout: int):
         self.bot_token = bot_token
         self.chat_id = chat_id
+        self.timeout = timeout
 
     @classmethod
-    def init(cls, bot_token: str, chat_id: str) -> "Bot":
+    def init(cls, bot_token: str, chat_id: str, timeout: int) -> "Bot":
         if bot_token.strip() == "" or chat_id.strip() == "":
             raise ValueError("Bot token and chat ID cannot be empty")
 
-        return cls(bot_token, chat_id)
+        return cls(bot_token, chat_id, timeout)
 
     def send_message(self, message: str, parse_mode: str = "HTML") -> str:
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -21,7 +22,7 @@ class Bot:
             "text": message,
             "parse_mode": parse_mode
         }
-        response = requests.post(url, data=payload)
+        response = requests.post(url, data=payload, timeout=self.timeout)
 
         if response.status_code != 200:
             raise RuntimeError(f"Failed to send message: {response.text}")
@@ -37,7 +38,7 @@ class Bot:
         files = {
             "photo": ("graph.png", photo, "image/png")
         }
-        response = requests.post(url, data=payload, files=files)
+        response = requests.post(url, data=payload, files=files, timeout=self.timeout)
 
         if response.status_code != 200:
             raise RuntimeError(f"Failed to send photo: {response.text}")
@@ -49,7 +50,7 @@ class Bot:
             "chat_id": self.chat_id,
             "action": action
         }
-        response = requests.post(url, data=payload)
+        response = requests.post(url, data=payload, timeout=self.timeout)
 
         if response.status_code != 200:
             raise RuntimeError(f"Failed to send chat action: {response.text}")

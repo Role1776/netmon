@@ -148,9 +148,9 @@ def main():
     conf = cfg.Config.init()
     t: Notifier
     if conf.notifier == "discord":
-        t = discord_hook.Bot.init(conf.discord_webhook_url)
+        t = discord_hook.Bot.init(conf.discord_webhook_url, conf.request_timeout)
     else:
-        t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id)
+        t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id, conf.request_timeout)
     r = runner.Runner()
 
     counter = 0

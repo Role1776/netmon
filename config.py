@@ -5,6 +5,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_REQUEST_TIMEOUT = 10
+
 class Config:
     def __init__(
         self,
@@ -16,6 +18,7 @@ class Config:
         tg_bot_token: str = "",
         tg_chat_id: str = "",
         discord_webhook_url: str = "",
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT
     ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
@@ -25,6 +28,7 @@ class Config:
         self.tg_bot_token: str = tg_bot_token
         self.tg_chat_id: str = tg_chat_id
         self.discord_webhook_url: str = discord_webhook_url
+        self.request_timeout: int = request_timeout
 
     @staticmethod
     def _parse_args():
@@ -64,6 +68,10 @@ class Config:
         tg_chat_id = os.getenv("TG_CHAT_ID", "")
         discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
 
+        request_timeout = int(os.getenv("REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT))
+        if request_timeout <= 0:
+            raise RuntimeError(f"REQUEST_TIMEOUT must be positive, got: {request_timeout}")
+
         if notifier == "telegram":
             if tg_bot_token.strip() == "":
                 raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
@@ -76,4 +84,5 @@ class Config:
         return cls(
             ai_key, db_path, model, base_url, notifier,
             tg_bot_token, tg_chat_id, discord_webhook_url,
+            request_timeout,
         )
