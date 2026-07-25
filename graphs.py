@@ -6,7 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from typing import List
 from models import NetworkMetric
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter, FuncFormatter
+from matplotlib.ticker import MaxNLocator, FormatStrFormatter, FuncFormatter
 import matplotlib.dates as mdates
 
 GRAPHS_DIR: Final[str] = "graphs"
@@ -31,14 +31,19 @@ class NetmonGraph:
         plt.figure(figsize=(10, 6))
 
         ax = plt.gca()
-        ax.yaxis.set_major_locator(MultipleLocator(50))
-        ax.yaxis.set_minor_locator(MultipleLocator(10))
-        
+        # MaxNLocator picks a "nice" tick step automatically based on the data's
+        # actual range, so it stays readable whether speeds are tens of Mbps
+        # on a slow connection or thousands on a gigabit line —
+        # a fixed-interval locator would otherwise pack in dozens of overlapping
+        # labels once values exceed a few hundred.
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=10, min_n_ticks=5))
+        ax.yaxis.set_minor_locator(MaxNLocator(nbins=40))
+
         ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
-        ax.yaxis.set_minor_formatter(FuncFormatter(lambda x, pos: "" if x % 50 == 0 else f"{x:g}"))
-        
+        ax.yaxis.set_minor_formatter(FuncFormatter(lambda x, pos: ""))
+
         ax.tick_params(axis='y', which='major', labelsize=10)
-        ax.tick_params(axis='y', which='minor', labelsize=7)    
+        ax.tick_params(axis='y', which='minor', labelsize=7)
 
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m %H:%M'))

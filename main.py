@@ -6,9 +6,11 @@ import config as cfg
 import sqlite
 import ai
 import tg
+import discord_hook
 import time
 import models
 import runner
+from notifier import ChatAction, Notifier
 
 REPORT_SYSTEM_PROMPT = """
 You are a sarcastic, cynical network analyst bot. Your job is to output a short network speed test and 24-hour trend report in Telegram HTML format.
@@ -119,7 +121,7 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 <b>Current status:</b> {status_text}"""
 
-SLEEP_TIME = 3600
+SLEEP_TIME = 1800
 
 log = logging.getLogger("netmon")
 
@@ -144,7 +146,11 @@ def main():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     conf = cfg.Config.init()
-    t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id) 
+    t: Notifier
+    if conf.notifier == "discord":
+        t = discord_hook.Bot.init(conf.discord_webhook_url, conf.request_timeout)
+    else:
+        t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id, conf.request_timeout)
     r = runner.Runner()
 
     counter = 0
@@ -156,7 +162,7 @@ def main():
         log.info("The bot has been started.")
         while True:
 
-            t.send_chat_action(tg.ChatAction.TYPING)
+            t.send_chat_action(ChatAction.TYPING)
 
             metric = r.run_speedtest()
             all_devices = r.run_devices_scan()
@@ -168,13 +174,13 @@ def main():
                 database.add_speedtest(speedtest)
             log.info(f"Speedtest has been added: {speedtest}")
 
-            if counter >= 4: #send a detailed report with graph every 4 hours
+            if counter >= 8: #send a detailed report with graph every 4 hours
                 metrics, device_counts = database.get_metrics_with_device_counts()
 
                 user_message = ""
                 for m, device_count in zip(metrics, device_counts):
                     user_message += REPORT_USER_TEMPLATE.format(
-                        timestamp=m.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                         download=round(m.download / 10**6, 1),
                         upload=round(m.upload / 10**6, 1),
                         ping=m.ping,
@@ -186,11 +192,11 @@ def main():
                         device_count=device_count
                     ) + "\n"
         
-                t.send_chat_action(tg.ChatAction.TYPING)
+                t.send_chat_action(ChatAction.TYPING)
                 report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
                 report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
 
-                t.send_chat_action(tg.ChatAction.UPLOAD_PHOTO)
+                t.send_chat_action(ChatAction.UPLOAD_PHOTO)
                 graph = graphs.NetmonGraph(metrics, device_counts)
                 graph_name = graph.plot()
 
@@ -210,7 +216,7 @@ def main():
                     status_text = "At least it works, I guess"
 
                 msg = MINI_REPORT_TEMPLATE.format(
-                    timestamp=metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                     download=dl_speed,
                     upload=metric.upload / 10**6,
                     ping=ping,
