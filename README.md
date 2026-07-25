@@ -20,7 +20,7 @@
 
 ---
 
-A lightweight local bot that runs a speed test on your network every hour, scans active devices on your LAN using `nmap`, and logs everything to a local SQLite database.
+A lightweight local bot that runs a speed test on your network every 30 minutes, scans active devices on your LAN using `nmap`, and logs everything to a local SQLite database.
 
 Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend graph and a sarcastic, LLM-generated commentary on your network's behavior (*"someone's hogging the bandwidth again"*).
 
@@ -31,13 +31,13 @@ Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend g
 
 ## Features & Workflow
 
-Every hour (`SLEEP_TIME` in `main.py`, default 3600 seconds):
+Every 30 minutes (`SLEEP_TIME` in `main.py`, default 1800 seconds):
 
 1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (see [the note on measurement mode](#a-note-on-measurement-mode)).
 2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
 3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
 4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
-5. **24h AI Report:** Every 4th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
+5. **24h AI Report:** Every 8th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
 
 ---
 
