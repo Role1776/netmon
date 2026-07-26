@@ -161,7 +161,6 @@ def main():
     ):
         log.info("The bot has been started.")
         while True:
-
             t.send_chat_action(ChatAction.TYPING)
 
             metric = r.run_speedtest()
@@ -191,10 +190,21 @@ def main():
                         share=m.share,
                         device_count=device_count
                     ) + "\n"
-        
+
                 t.send_chat_action(ChatAction.TYPING)
-                report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
-                report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+                try:
+                    report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
+                    report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+                except Exception as e:
+                    # AI backend down/unreachable/misconfigured: don't lose the
+                    # whole report, just send the graph with a plain notice
+                    # instead of a sarcastic AI-written one.
+                    log.error(f"AI report generation failed, sending graph without commentary: {e}")
+                    report = (
+                        "<b>Network Speed Test Report (24h Analysis)</b>\n\n"
+                        "<i>AI commentary unavailable this cycle — the AI backend "
+                        "could not be reached. Raw graph data is attached below.</i>"
+                    )
 
                 t.send_chat_action(ChatAction.UPLOAD_PHOTO)
                 graph = graphs.NetmonGraph(metrics, device_counts)
@@ -202,7 +212,7 @@ def main():
 
                 with open(graph_name, "rb") as f:
                     t.send_photo(f.read(), report)
-                
+
                 log.info("Detailed report has been sent.")
                 counter = 0
             else:
@@ -229,10 +239,9 @@ def main():
                 )
                 t.send_message(msg)
                 log.info("Mini report has been sent.")
-            
-            counter +=1
-            
-            
+
+            counter += 1
+
             time.sleep(SLEEP_TIME)
 
 if __name__ == "__main__":

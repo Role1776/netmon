@@ -4,4 +4,4 @@ __pycache__/
 *.pyc
 .venv/
 .vscode/
-pyrightconfig.json
+pyrightconfig.jsongraphs/*.png
