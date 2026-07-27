@@ -189,6 +189,7 @@ Two consequences worth knowing:
 
 * **Don't compare netmon's numbers directly against speedtest.net in a browser.** The browser test is multi-threaded and will read higher. That gap is methodology, not a fault in your line.
 * **On very fast links (roughly 500 Mbps+), expect single-stream figures to sit well below your subscribed speed.** Beyond the methodology gap, `speedtest-cli` is pure Python, so at gigabit speeds its own CPU overhead starts contributing too.
+* **Using the Ookla client has other implecations!** There are other things to consider when using the Oficial client over the `speedtest-cli`. The amount of data transfered at **EACH** test is significantly higher, it will also purposfully try to saturate your line, causing possible slowdown on the rest of your network (unless you have QoS setup). Due to this *THIS IS NOT THE DEFAULT CLIENT* and as such Jitter tests and BufferBloat will not function. Consider this before switching over using the `install-ookla-speedtest.sh` script, especially if you have a data cap in place. Just for example, a default test over 24 hours will equate to around a 4K movie playback. Using the Ookla client will likely increase this by a factor of 10x
 
 Since netmon exists to track *trends*, consistency matters more than peak numbers: keep one measurement method for the lifetime of your database. Swapping the backend mid-history puts a step change in your 24-hour graph that the AI commentary will faithfully report as a real speed jump.
 
@@ -271,11 +272,6 @@ netmon/
 └── LICENSE                        # MIT License file
 ```
 
----
-
-## License
-
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
 
 ## Device Watch
 
@@ -311,3 +307,9 @@ A speed test that fails outright (not just a bad reading, but the test itself er
 A connection can have great raw download/upload throughput but still feel laggy under load if jitter (ping variance) is high — plain Mbps numbers don't capture that at all. Once the Ookla backend is installed, reports automatically include jitter and packet loss alongside the usual metrics, and the AI treats high jitter or nonzero packet loss as a bufferbloat signal distinct from raw speed.
 
 Nothing needs to be configured to enable this beyond installing the Ookla backend — the field appears automatically once available. If you're still on the classic `speedtest-cli` tool, jitter/packet loss simply won't show up in reports (not a bug, not an error, just no data to show).
+
+---
+
+## License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
