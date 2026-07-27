@@ -3,6 +3,7 @@ import uuid
 from uuid_extensions import uuid7str
 from datetime import timezone
 from datetime import datetime
+from typing import Optional
 
 @dataclass(frozen=True, slots=True)
 class NetworkMetric:
@@ -64,12 +65,18 @@ class NetworkDevice:
     ip: str
     latency_ms: float 
     timestamp: datetime 
+    mac: Optional[str] = None
+    vendor: Optional[str] = None
+    hostname: Optional[str] = None
 
     @classmethod
     def create(
         cls,
         ip: str,
         latency_ms: float,
+        mac: Optional[str] = None,
+        vendor: Optional[str] = None,
+        hostname: Optional[str] = None,
     ) -> "NetworkDevice":
         if not ip or not ip.strip():
             raise ValueError("IP cannot be empty")
@@ -80,7 +87,10 @@ class NetworkDevice:
             id=uuid.UUID(uuid7str()),
             ip=ip,
             latency_ms=latency_ms,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
+            mac=mac,
+            vendor=vendor,
+            hostname=hostname,
         )
 
 
