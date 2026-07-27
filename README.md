@@ -305,4 +305,9 @@ A speed test that fails outright (not just a bad reading, but the test itself er
 
 ## Jitter & Bufferbloat Reporting
 
-When using the [Ookla speed test backend](#speed-test-backend-default-vs-ookla), reports also include jitter and packet loss — a connection can have great raw throughput but still feel laggy under load if jitter is high, which plain download/upload numbers don't capture. This is only available via the Ookla backend; the classic `speedtest-cli` tool has no equivalent data, so these fields simply don't appear for that backend rather than showing a fake zero.
+> [!IMPORTANT]
+> **Not active by default.** Jitter and packet-loss reporting only works with the [Ookla speed test backend](#speed-test-backend-default-vs-ookla) (`sudo bash install-ookla-speedtest.sh`). The default `speedtest-cli` backend has no equivalent data at all, so on a fresh install this feature is silently inactive — nothing breaks, jitter/packet-loss fields just never appear, until you switch backends.
+
+A connection can have great raw download/upload throughput but still feel laggy under load if jitter (ping variance) is high — plain Mbps numbers don't capture that at all. Once the Ookla backend is installed, reports automatically include jitter and packet loss alongside the usual metrics, and the AI treats high jitter or nonzero packet loss as a bufferbloat signal distinct from raw speed.
+
+Nothing needs to be configured to enable this beyond installing the Ookla backend — the field appears automatically once available. If you're still on the classic `speedtest-cli` tool, jitter/packet loss simply won't show up in reports (not a bug, not an error, just no data to show).
