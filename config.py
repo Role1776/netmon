@@ -8,6 +8,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_REQUEST_TIMEOUT = 30
 DEFAULT_SLEEP_TIME = 1800
 DEFAULT_REPORT_CYCLE_COUNT = 8
+DEFAULT_OUTAGE_DOWNLOAD_THRESHOLD_MBPS = 20.0
+DEFAULT_OUTAGE_PING_THRESHOLD_MS = 150.0
+DEFAULT_OUTAGE_CONSECUTIVE_READINGS = 2
 
 class Config:
     def __init__(
@@ -25,6 +28,9 @@ class Config:
         report_cycle_count: int = DEFAULT_REPORT_CYCLE_COUNT,
         test_ai: bool = False,
         ai_context_size: int | None = None,
+        outage_download_threshold_mbps: float = DEFAULT_OUTAGE_DOWNLOAD_THRESHOLD_MBPS,
+        outage_ping_threshold_ms: float = DEFAULT_OUTAGE_PING_THRESHOLD_MS,
+        outage_consecutive_readings: int = DEFAULT_OUTAGE_CONSECUTIVE_READINGS,
     ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
@@ -39,6 +45,9 @@ class Config:
         self.report_cycle_count: int = report_cycle_count
         self.test_ai: bool = test_ai
         self.ai_context_size: int | None = ai_context_size
+        self.outage_download_threshold_mbps: float = outage_download_threshold_mbps
+        self.outage_ping_threshold_ms: float = outage_ping_threshold_ms
+        self.outage_consecutive_readings: int = outage_consecutive_readings
 
     @staticmethod
     def _parse_args():
@@ -120,6 +129,27 @@ class Config:
             if ai_context_size <= 0:
                 raise RuntimeError(f"AI_CONTEXT_SIZE must be positive, got: {ai_context_size}")
 
+        try:
+            outage_download_threshold_mbps = float(os.getenv("OUTAGE_DOWNLOAD_THRESHOLD_MBPS", DEFAULT_OUTAGE_DOWNLOAD_THRESHOLD_MBPS))
+        except ValueError:
+            raise RuntimeError(f"OUTAGE_DOWNLOAD_THRESHOLD_MBPS must be a number, got: {os.getenv('OUTAGE_DOWNLOAD_THRESHOLD_MBPS')!r}")
+        if outage_download_threshold_mbps <= 0:
+            raise RuntimeError(f"OUTAGE_DOWNLOAD_THRESHOLD_MBPS must be positive, got: {outage_download_threshold_mbps}")
+
+        try:
+            outage_ping_threshold_ms = float(os.getenv("OUTAGE_PING_THRESHOLD_MS", DEFAULT_OUTAGE_PING_THRESHOLD_MS))
+        except ValueError:
+            raise RuntimeError(f"OUTAGE_PING_THRESHOLD_MS must be a number, got: {os.getenv('OUTAGE_PING_THRESHOLD_MS')!r}")
+        if outage_ping_threshold_ms <= 0:
+            raise RuntimeError(f"OUTAGE_PING_THRESHOLD_MS must be positive, got: {outage_ping_threshold_ms}")
+
+        try:
+            outage_consecutive_readings = int(os.getenv("OUTAGE_CONSECUTIVE_READINGS", DEFAULT_OUTAGE_CONSECUTIVE_READINGS))
+        except ValueError:
+            raise RuntimeError(f"OUTAGE_CONSECUTIVE_READINGS must be an integer, got: {os.getenv('OUTAGE_CONSECUTIVE_READINGS')!r}")
+        if outage_consecutive_readings <= 0:
+            raise RuntimeError(f"OUTAGE_CONSECUTIVE_READINGS must be positive, got: {outage_consecutive_readings}")
+
         if notifier == "telegram":
             if tg_bot_token.strip() == "":
                 raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
@@ -134,4 +164,5 @@ class Config:
             tg_bot_token, tg_chat_id, discord_webhook_url,
             request_timeout, sleep_time, report_cycle_count,
             args.test_ai, ai_context_size,
+            outage_download_threshold_mbps, outage_ping_threshold_ms, outage_consecutive_readings,
         )

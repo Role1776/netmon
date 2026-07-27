@@ -17,6 +17,8 @@ class NetworkMetric:
     server: str
     bytes_sent: int
     bytes_received: int
+    jitter_ms: Optional[float] = None
+    packet_loss_pct: Optional[float] = None
 
     @classmethod
     def create(
@@ -28,7 +30,9 @@ class NetworkMetric:
         client: str,
         server: str,
         bytes_sent: int,
-        bytes_received: int
+        bytes_received: int,
+        jitter_ms: Optional[float] = None,
+        packet_loss_pct: Optional[float] = None,
     ) -> "NetworkMetric":
         if download < 0:
             raise ValueError("download must be non-negative")
@@ -44,6 +48,10 @@ class NetworkMetric:
             raise ValueError("client cannot be empty")
         if not server or not server.strip():
             raise ValueError("server cannot be empty")
+        if jitter_ms is not None and jitter_ms < 0:
+            raise ValueError("jitter_ms must be non-negative")
+        if packet_loss_pct is not None and not (0 <= packet_loss_pct <= 100):
+            raise ValueError("packet_loss_pct must be between 0 and 100")
 
         return cls(
             id=uuid.UUID(uuid7str()), 
@@ -55,7 +63,9 @@ class NetworkMetric:
             client=client,
             server=server,
             bytes_sent=bytes_sent,
-            bytes_received=bytes_received
+            bytes_received=bytes_received,
+            jitter_ms=jitter_ms,
+            packet_loss_pct=packet_loss_pct,
         )
 
 

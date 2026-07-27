@@ -48,9 +48,12 @@ class DB:
                 server         TEXT NOT NULL,
                 bytes_sent     INTEGER NOT NULL,
                 bytes_received INTEGER NOT NULL,
+                jitter_ms      REAL,
+                packet_loss_pct REAL,
                 timestamp      DATETIME NOT NULL DEFAULT (datetime('now'))
             );
         """)
+        self._migrate_metrics_columns()
 
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS device_scans (
@@ -71,6 +74,18 @@ class DB:
                 metrics_id      TEXT UNIQUE REFERENCES metrics(id) ON DELETE CASCADE
             );
         """)
+
+    def _migrate_metrics_columns(self):
+        # Databases created before jitter/packet-loss tracking was added
+        # won't have these columns yet; add them in place. Nullable since
+        # only the Ookla CLI backend provides this data -- classic
+        # speedtest-cli users will just have NULL here indefinitely, which
+        # is expected, not a migration failure.
+        cursor = self.conn.execute("PRAGMA table_info(metrics)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        for col in ("jitter_ms", "packet_loss_pct"):
+            if col not in existing_cols:
+                self.conn.execute(f"ALTER TABLE metrics ADD COLUMN {col} REAL")
 
     def _migrate_device_scans_columns(self):
         # Databases created before mac/vendor/hostname tracking was added
@@ -105,14 +120,14 @@ class DB:
             self.conn.execute("""
                 INSERT INTO metrics (
                     id, download, upload, ping, timestamp, share, client, server,
-                    bytes_sent, bytes_received
+                    bytes_sent, bytes_received, jitter_ms, packet_loss_pct
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 str(metric.id), metric.download, metric.upload,
                 metric.ping, metric.timestamp, metric.share,
                 metric.client, metric.server, metric.bytes_sent,
-                metric.bytes_received
+                metric.bytes_received, metric.jitter_ms, metric.packet_loss_pct
             ))
 
     def add_devices(self, devices: list[models.NetworkDevice]) -> uuid.UUID:
@@ -142,7 +157,7 @@ class DB:
             with closing(self.conn.cursor()) as cursor:
                 cursor.execute("""
                     SELECT * FROM (
-                        SELECT id, download, upload, ping, timestamp, share, client, server, bytes_sent, bytes_received
+                        SELECT id, download, upload, ping, timestamp, share, client, server, bytes_sent, bytes_received, jitter_ms, packet_loss_pct
                         FROM metrics
                         WHERE timestamp > DATETIME('now', '-24 hours')
                         ORDER BY timestamp DESC
@@ -167,7 +182,9 @@ class DB:
                 client=row[6],
                 server=row[7],
                 bytes_sent=row[8],
-                bytes_received=row[9]
+                bytes_received=row[9],
+                jitter_ms=row[10],
+                packet_loss_pct=row[11],
             )
             for row in rows
         ]
@@ -178,7 +195,7 @@ class DB:
                 cursor.execute("""
                     SELECT * FROM (
                         SELECT m.id, m.download, m.upload, m.ping, m.timestamp, m.share, m.client, m.server,
-                               m.bytes_sent, m.bytes_received, ds.ips
+                               m.bytes_sent, m.bytes_received, m.jitter_ms, m.packet_loss_pct, ds.ips
                         FROM metrics m
                         JOIN speedtest st ON st.metrics_id = m.id
                         JOIN device_scans ds ON ds.id = st.device_scans_id
@@ -205,9 +222,11 @@ class DB:
                 client=row[6],
                 server=row[7],
                 bytes_sent=row[8],
-                bytes_received=row[9]
+                bytes_received=row[9],
+                jitter_ms=row[10],
+                packet_loss_pct=row[11],
             ))
-            device_counts.append(len(json.loads(row[10])))
+            device_counts.append(len(json.loads(row[12])))
 
         return metrics, device_counts
 

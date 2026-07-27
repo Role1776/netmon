@@ -276,3 +276,33 @@ netmon/
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
+
+## Device Watch
+
+Every detailed report includes a vendor breakdown of devices currently on the network (via `nmap`'s MAC-address OUI lookup) and flags anything genuinely new — a MAC address not seen in the last 14 days. New devices are called out by vendor/hostname when available; the AI is told to treat an unidentifiable new device (no vendor or hostname at all) as more worth a second glance than a recognizable one. This needs no extra `nmap` flags — MAC/vendor/hostname are already returned by the existing ARP scan when run as root.
+
+## AI Report Reliability
+
+The AI is only ever asked to return three short JSON fields (`dynamics_analysis`, `device_watch`, `conclusion`) — never the surrounding HTML structure. Earlier versions asked the model to reproduce the entire report template literally, but several capable local models reliably abandoned that under load and fell back to generic "helpful assistant" summaries instead of the sarcastic persona/format. The HTML skeleton is now built deterministically in code, so report formatting is correct regardless of which model is behind `AI_BASE_URL`.
+
+## Error Alerting
+
+Speed test, device scan, database, and notifier-delivery failures still crash the process rather than retrying silently, so a persistent problem doesn't go unnoticed — but before crashing, netmon makes a best-effort attempt to post an alert to your configured notifier, so the failure is visible without checking server logs. A failure to send that alert (e.g. the notifier itself being unreachable) is logged separately and never masks the original error.
+
+## Instant Outage & Degradation Alerting
+
+Beyond the regular scheduled reports, netmon tracks connection health every cycle and alerts immediately (not waiting for the next scheduled report) when something looks genuinely wrong:
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `OUTAGE_DOWNLOAD_THRESHOLD_MBPS` | Download speed below this is considered degraded | `20` |
+| `OUTAGE_PING_THRESHOLD_MS` | Ping above this is considered degraded | `150` |
+| `OUTAGE_CONSECUTIVE_READINGS` | How many consecutive bad readings before alerting (avoids alerting on a single blip) | `2` |
+
+The defaults are conservative generic values — on a fast connection, set `OUTAGE_DOWNLOAD_THRESHOLD_MBPS` much higher (e.g. `500`) so a real, meaningful drop actually triggers an alert.
+
+A speed test that fails outright (not just a bad reading, but the test itself erroring) is treated as "the internet is down" — the exact condition this tool exists to detect — rather than a netmon bug, so it does **not** crash the process; it alerts once, then keeps trying every cycle, and alerts again on recovery with the outage duration. This is intentionally different from the crash-on-failure handling above, which is reserved for genuine infrastructure problems (misconfiguration, disk issues, notifier outages) rather than the network conditions netmon is built to monitor.
+
+## Jitter & Bufferbloat Reporting
+
+When using the [Ookla speed test backend](#speed-test-backend-default-vs-ookla), reports also include jitter and packet loss — a connection can have great raw throughput but still feel laggy under load if jitter is high, which plain download/upload numbers don't capture. This is only available via the Ookla backend; the classic `speedtest-cli` tool has no equivalent data, so these fields simply don't appear for that backend rather than showing a fake zero.

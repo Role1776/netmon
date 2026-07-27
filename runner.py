@@ -47,6 +47,12 @@ class _SpeedTestResponse(BaseModel):
     bytes_received: int
     share: Optional[str]
     client: _ClientInfo
+    # Only present when using the Ookla CLI wrapper (install-ookla-speedtest.sh);
+    # the classic speedtest-cli JSON schema has no equivalent fields, so these
+    # stay None for that backend and any bufferbloat/jitter reporting is
+    # simply skipped rather than shown as a fake zero.
+    jitter: Optional[float] = None
+    packet_loss: Optional[float] = None
 
     @field_validator('timestamp', mode='before')
     @classmethod
@@ -80,7 +86,9 @@ class Runner:
             client=parsed_result.client.isp,
             server=parsed_result.server.name,
             bytes_sent=parsed_result.bytes_sent,
-            bytes_received=parsed_result.bytes_received
+            bytes_received=parsed_result.bytes_received,
+            jitter_ms=parsed_result.jitter,
+            packet_loss_pct=parsed_result.packet_loss,
         )
 
     @staticmethod
