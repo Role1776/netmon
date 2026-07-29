@@ -56,9 +56,13 @@ class DB:
             CREATE TABLE IF NOT EXISTS device_scans (
                 id             TEXT PRIMARY KEY,
                 ips            TEXT NOT NULL,
-                latencies      TEXT NOT NULL
+                latencies      TEXT NOT NULL,
+                macs           TEXT NOT NULL DEFAULT '[]',
+                vendors        TEXT NOT NULL DEFAULT '[]',
+                hostnames      TEXT NOT NULL DEFAULT '[]'
             );
         """)
+        self._migrate_device_scans_columns()
 
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS speedtest (
@@ -67,6 +71,18 @@ class DB:
                 metrics_id      TEXT UNIQUE REFERENCES metrics(id) ON DELETE CASCADE
             );
         """)
+
+    def _migrate_device_scans_columns(self):
+        # Databases created before mac/vendor/hostname tracking was added
+        # won't have these columns yet; add them in place so upgrading
+        # doesn't require recreating the database.
+        cursor = self.conn.execute("PRAGMA table_info(device_scans)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        for col in ("macs", "vendors", "hostnames"):
+            if col not in existing_cols:
+                self.conn.execute(
+                    f"ALTER TABLE device_scans ADD COLUMN {col} TEXT NOT NULL DEFAULT '[]'"
+                )
 
     @contextmanager
     def transaction(self):
