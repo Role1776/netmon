@@ -1,6 +1,7 @@
 import signal
 import sys
 import json
+import html
 import logging
 import graphs
 import config as cfg
@@ -152,6 +153,23 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 SLEEP_TIME = 1800
 
+_ERROR_ALERT_MAX_EXC_CHARS = 500
+
+
+def _error_alert_message(exc: Exception) -> str:
+    # HTML-escaped so a stray < or & in an exception's own message text
+    # (e.g. a file path or repr containing special characters) can't break
+    # Telegram's HTML parse mode and cause the alert itself to fail to send.
+    exc_text = html.escape(_clip(f"{type(exc).__name__}: {exc}", _ERROR_ALERT_MAX_EXC_CHARS))
+    return (
+        "<b>⚠️ netmon has hit an error and is stopping</b>\n\n"
+        f"<code>{exc_text}</code>\n\n"
+        "This was not a transient AI hiccup — it's a real problem with the "
+        "speed test, device scan, database, or notifier delivery itself, so "
+        "the bot is not silently retrying. Check the service logs "
+        "(journalctl -u netmon) for full details."
+    )
+
 log = logging.getLogger("netmon")
 
 
@@ -190,161 +208,178 @@ def main():
     ):
         log.info("The bot has been started.")
         while True:
-            t.send_chat_action(ChatAction.TYPING)
-
-            metric = r.run_speedtest()
-            all_devices = r.run_devices_scan()
-
-            with database.transaction():
-                database.add_metric(metric)
-                device_scan_id = database.add_devices(all_devices)
-                speedtest = models.SpeedTest.create(metric.id, device_scan_id)
-                database.add_speedtest(speedtest)
-            log.info(f"Speedtest has been added: {speedtest}")
-
-            if counter >= 8: #send a detailed report with graph every 4 hours
-                metrics, device_counts = database.get_metrics_with_device_counts()
-
-                user_message = ""
-                for m, device_count in zip(metrics, device_counts):
-                    user_message += REPORT_USER_TEMPLATE.format(
-                        timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                        download=round(m.download / 10**6, 1),
-                        upload=round(m.upload / 10**6, 1),
-                        ping=m.ping,
-                        jitter_line=_ai_history_jitter_line(m),
-                        client=m.client,
-                        server=m.server,
-                        download_mb=round(m.bytes_received / 10**6, 1),
-                        upload_mb=round(m.bytes_sent / 10**6, 1),
-                        share=m.share,
-                        device_count=device_count
-                    ) + "\n"
-
-                device_details = database.get_latest_devices_with_novelty()
-                if device_details:
-                    vendor_counts: dict[str, int] = {}
-                    for d in device_details:
-                        if d["vendor"]:
-                            key = d["vendor"]
-                        elif d["mac"]:
-                            key = "Unknown vendor"
-                        else:
-                            key = "Unidentified (off-subnet, no MAC resolved)"
-                        vendor_counts[key] = vendor_counts.get(key, 0) + 1
-
-                    vendor_lines = [
-                        VENDOR_COUNT_TEMPLATE.format(vendor=vendor, count=count)
-                        for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1])
-                    ]
-                    user_message += "\nDevice vendor breakdown (currently online):\n" + "\n".join(vendor_lines) + "\n"
-
-                    new_devices = [d for d in device_details if d["is_new"]]
-                    if new_devices:
-                        new_lines = []
-                        for d in new_devices:
-                            vendor_part = f" | Vendor: {d['vendor']}" if d["vendor"] else " | Vendor: unknown"
-                            hostname_part = f" | Hostname: {d['hostname']}" if d["hostname"] else ""
-                            new_lines.append(NEW_DEVICE_ENTRY_TEMPLATE.format(
-                                ip=d["ip"],
-                                vendor_part=vendor_part,
-                                hostname_part=hostname_part,
-                            ))
-                        user_message += "\nNEW devices this cycle:\n" + "\n".join(new_lines) + "\n"
-                    else:
-                        user_message += "\nNEW devices this cycle: none.\n"
-                else:
-                    user_message += "\nDevice vendor breakdown (currently online): none detected this cycle.\nNEW devices this cycle: none.\n"
-
+            try:
                 t.send_chat_action(ChatAction.TYPING)
-                raw_response = None
-                try:
-                    raw_response = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
 
-                    # Defensive cleanup: some models wrap JSON in ```json
-                    # fences despite being told not to -- strip those if present.
-                    cleaned = raw_response.strip()
-                    if cleaned.startswith("```"):
-                        cleaned = cleaned.strip("`")
-                        if cleaned.lower().startswith("json"):
-                            cleaned = cleaned[4:]
-                        cleaned = cleaned.strip()
+                metric = r.run_speedtest()
+                all_devices = r.run_devices_scan()
 
-                    parsed = json.loads(cleaned)
+                with database.transaction():
+                    database.add_metric(metric)
+                    device_scan_id = database.add_devices(all_devices)
+                    speedtest = models.SpeedTest.create(metric.id, device_scan_id)
+                    database.add_speedtest(speedtest)
+                log.info(f"Speedtest has been added: {speedtest}")
 
-                    dynamics_analysis = _clip(str(parsed.get("dynamics_analysis", "")), _DYNAMICS_ANALYSIS_MAX_CHARS)
-                    device_watch = _clip(str(parsed.get("device_watch", "")), _DEVICE_WATCH_MAX_CHARS)
-                    conclusion = _clip(str(parsed.get("conclusion", "")), _CONCLUSION_MAX_CHARS)
+                if counter >= 8: #send a detailed report with graph every 4 hours
+                    metrics, device_counts = database.get_metrics_with_device_counts()
 
-                    if not dynamics_analysis or not device_watch or not conclusion:
-                        raise ValueError(f"AI response missing one or more required fields: {parsed!r}")
+                    user_message = ""
+                    for m, device_count in zip(metrics, device_counts):
+                        user_message += REPORT_USER_TEMPLATE.format(
+                            timestamp=m.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                            download=round(m.download / 10**6, 1),
+                            upload=round(m.upload / 10**6, 1),
+                            ping=m.ping,
+                            jitter_line=_ai_history_jitter_line(m),
+                            client=m.client,
+                            server=m.server,
+                            download_mb=round(m.bytes_received / 10**6, 1),
+                            upload_mb=round(m.bytes_sent / 10**6, 1),
+                            share=m.share,
+                            device_count=device_count
+                        ) + "\n"
 
-                except Exception as e:
-                    # Covers both AI backend failures (unreachable/misconfigured)
-                    # and the model returning malformed/incomplete JSON -- either
-                    # way, don't lose the whole report, just fall back to plain
-                    # non-AI text for the three commentary fields. The skeleton
-                    # itself is unaffected either way since it's built in code.
-                    log.error(
-                        f"AI report generation failed or returned invalid data: {e}\n"
-                        f"Raw AI response was: {raw_response!r}",
-                        exc_info=True,
+                    device_details = database.get_latest_devices_with_novelty()
+                    if device_details:
+                        vendor_counts: dict[str, int] = {}
+                        for d in device_details:
+                            if d["vendor"]:
+                                key = d["vendor"]
+                            elif d["mac"]:
+                                key = "Unknown vendor"
+                            else:
+                                key = "Unidentified (off-subnet, no MAC resolved)"
+                            vendor_counts[key] = vendor_counts.get(key, 0) + 1
+
+                        vendor_lines = [
+                            VENDOR_COUNT_TEMPLATE.format(vendor=vendor, count=count)
+                            for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1])
+                        ]
+                        user_message += "\nDevice vendor breakdown (currently online):\n" + "\n".join(vendor_lines) + "\n"
+
+                        new_devices = [d for d in device_details if d["is_new"]]
+                        if new_devices:
+                            new_lines = []
+                            for d in new_devices:
+                                vendor_part = f" | Vendor: {d['vendor']}" if d["vendor"] else " | Vendor: unknown"
+                                hostname_part = f" | Hostname: {d['hostname']}" if d["hostname"] else ""
+                                new_lines.append(NEW_DEVICE_ENTRY_TEMPLATE.format(
+                                    ip=d["ip"],
+                                    vendor_part=vendor_part,
+                                    hostname_part=hostname_part,
+                                ))
+                            user_message += "\nNEW devices this cycle:\n" + "\n".join(new_lines) + "\n"
+                        else:
+                            user_message += "\nNEW devices this cycle: none.\n"
+                    else:
+                        user_message += "\nDevice vendor breakdown (currently online): none detected this cycle.\nNEW devices this cycle: none.\n"
+
+                    t.send_chat_action(ChatAction.TYPING)
+                    raw_response = None
+                    try:
+                        raw_response = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
+
+                        # Defensive cleanup: some models wrap JSON in ```json
+                        # fences despite being told not to -- strip those if present.
+                        cleaned = raw_response.strip()
+                        if cleaned.startswith("```"):
+                            cleaned = cleaned.strip("`")
+                            if cleaned.lower().startswith("json"):
+                                cleaned = cleaned[4:]
+                            cleaned = cleaned.strip()
+
+                        parsed = json.loads(cleaned)
+
+                        dynamics_analysis = _clip(str(parsed.get("dynamics_analysis", "")), _DYNAMICS_ANALYSIS_MAX_CHARS)
+                        device_watch = _clip(str(parsed.get("device_watch", "")), _DEVICE_WATCH_MAX_CHARS)
+                        conclusion = _clip(str(parsed.get("conclusion", "")), _CONCLUSION_MAX_CHARS)
+
+                        if not dynamics_analysis or not device_watch or not conclusion:
+                            raise ValueError(f"AI response missing one or more required fields: {parsed!r}")
+
+                    except Exception as e:
+                        # Covers both AI backend failures (unreachable/misconfigured)
+                        # and the model returning malformed/incomplete JSON -- either
+                        # way, don't lose the whole report, just fall back to plain
+                        # non-AI text for the three commentary fields. The skeleton
+                        # itself is unaffected either way since it's built in code.
+                        log.error(
+                            f"AI report generation failed or returned invalid data: {e}\n"
+                            f"Raw AI response was: {raw_response!r}",
+                            exc_info=True,
+                        )
+                        dynamics_analysis = "AI commentary unavailable this cycle — the AI backend could not be reached or returned an unexpected response."
+                        device_watch = "AI commentary unavailable this cycle."
+                        conclusion = "Raw graph data is attached below."
+
+                    report = REPORT_TEMPLATE_SHELL.format(
+                        client=metric.client,
+                        server=metric.server,
+                        download=metric.download / 10**6,
+                        upload=metric.upload / 10**6,
+                        ping=metric.ping,
+                        jitter_line=_shell_jitter_line(metric),
+                        device_count=len(all_devices),
+                        dynamics_analysis=dynamics_analysis,
+                        device_watch=device_watch,
+                        download_mb=metric.bytes_received / 10**6,
+                        upload_mb=metric.bytes_sent / 10**6,
+                        conclusion=conclusion,
                     )
-                    dynamics_analysis = "AI commentary unavailable this cycle — the AI backend could not be reached or returned an unexpected response."
-                    device_watch = "AI commentary unavailable this cycle."
-                    conclusion = "Raw graph data is attached below."
 
-                report = REPORT_TEMPLATE_SHELL.format(
-                    client=metric.client,
-                    server=metric.server,
-                    download=metric.download / 10**6,
-                    upload=metric.upload / 10**6,
-                    ping=metric.ping,
-                    jitter_line=_shell_jitter_line(metric),
-                    device_count=len(all_devices),
-                    dynamics_analysis=dynamics_analysis,
-                    device_watch=device_watch,
-                    download_mb=metric.bytes_received / 10**6,
-                    upload_mb=metric.bytes_sent / 10**6,
-                    conclusion=conclusion,
-                )
+                    t.send_chat_action(ChatAction.UPLOAD_PHOTO)
+                    graph = graphs.NetmonGraph(metrics, device_counts)
+                    graph_name = graph.plot()
 
-                t.send_chat_action(ChatAction.UPLOAD_PHOTO)
-                graph = graphs.NetmonGraph(metrics, device_counts)
-                graph_name = graph.plot()
+                    with open(graph_name, "rb") as f:
+                        t.send_photo(f.read(), report)
 
-                with open(graph_name, "rb") as f:
-                    t.send_photo(f.read(), report)
-
-                log.info("Detailed report has been sent.")
-                counter = 0
-            else:
-                dl_speed = metric.download / 10**6
-                ping = metric.ping
-                if dl_speed >= 150 and ping <= 20:
-                    status_text = "Good speed and low latency"
-                elif dl_speed < 60 or ping > 40:
-                    status_text = "A bunch of idiots decided to stream 4K movies all at once, or the ISP's mice were busy chewing on the fiber line again, whatever"
+                    log.info("Detailed report has been sent.")
+                    counter = 0
                 else:
-                    status_text = "At least it works, I guess"
+                    dl_speed = metric.download / 10**6
+                    ping = metric.ping
+                    if dl_speed >= 150 and ping <= 20:
+                        status_text = "Good speed and low latency"
+                    elif dl_speed < 60 or ping > 40:
+                        status_text = "A bunch of idiots decided to stream 4K movies all at once, or the ISP's mice were busy chewing on the fiber line again, whatever"
+                    else:
+                        status_text = "At least it works, I guess"
 
-                msg = MINI_REPORT_TEMPLATE.format(
-                    timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                    download=dl_speed,
-                    upload=metric.upload / 10**6,
-                    ping=ping,
-                    jitter_line=_mini_report_jitter_line(metric),
-                    device_count=len(all_devices),
-                    client=metric.client,
-                    server=metric.server,
-                    download_mb=metric.bytes_received / 10**6,
-                    upload_mb=metric.bytes_sent / 10**6,
-                    status_text=status_text,
-                )
-                t.send_message(msg)
-                log.info("Mini report has been sent.")
+                    msg = MINI_REPORT_TEMPLATE.format(
+                        timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                        download=dl_speed,
+                        upload=metric.upload / 10**6,
+                        ping=ping,
+                        jitter_line=_mini_report_jitter_line(metric),
+                        device_count=len(all_devices),
+                        client=metric.client,
+                        server=metric.server,
+                        download_mb=metric.bytes_received / 10**6,
+                        upload_mb=metric.bytes_sent / 10**6,
+                        status_text=status_text,
+                    )
+                    t.send_message(msg)
+                    log.info("Mini report has been sent.")
 
-            counter += 1
+                counter += 1
+
+            except Exception as e:
+                # Real infrastructure failures (speed test, device scan,
+                # database, or notifier delivery) are NOT retried silently --
+                # per the project's design, they should crash loudly so a
+                # persistent problem doesn't go unnoticed. Before crashing,
+                # make a best-effort attempt to post an alert to the
+                # configured notifier so the failure is visible outside of
+                # server logs, then re-raise so the process actually exits
+                # (systemd/your process manager handles the restart policy).
+                log.error(f"Unrecoverable error during monitoring cycle: {e}", exc_info=True)
+                try:
+                    t.send_message(_error_alert_message(e))
+                except Exception as notify_err:
+                    log.error(f"Additionally failed to notify about the error: {notify_err}")
+                raise
 
             time.sleep(SLEEP_TIME)
 
