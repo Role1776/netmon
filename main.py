@@ -151,8 +151,6 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 <b>Current status:</b> {status_text}"""
 
-SLEEP_TIME = 1800
-
 _ERROR_ALERT_MAX_EXC_CHARS = 500
 
 
@@ -200,7 +198,15 @@ def main():
         t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id, conf.request_timeout)
     r = runner.Runner()
 
-    counter = 0
+    # Normally starts at 0 and climbs to conf.report_cycle_count before the
+    # first detailed report fires. --test-ai starts it already at threshold
+    # so the very first cycle exercises the AI + graph + notifier path; the
+    # detailed-report branch resets counter back to 0 on completion, so
+    # every cycle after that follows the normal schedule automatically —
+    # no config to remember to revert afterward.
+    counter = conf.report_cycle_count if conf.test_ai else 0
+    if conf.test_ai:
+        log.info("--test-ai passed: forcing a detailed AI report on the first cycle, then resuming normal schedule.")
 
     with (
         sqlite.DB.init(conf.db_path) as database,
@@ -221,7 +227,7 @@ def main():
                     database.add_speedtest(speedtest)
                 log.info(f"Speedtest has been added: {speedtest}")
 
-                if counter >= 8: #send a detailed report with graph every 4 hours
+                if counter >= conf.report_cycle_count: #send a detailed report with graph every N cycles
                     metrics, device_counts = database.get_metrics_with_device_counts()
 
                     user_message = ""
@@ -278,7 +284,7 @@ def main():
                     t.send_chat_action(ChatAction.TYPING)
                     raw_response = None
                     try:
-                        raw_response = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
+                        raw_response = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT, context_size=conf.ai_context_size)
 
                         # Defensive cleanup: some models wrap JSON in ```json
                         # fences despite being told not to -- strip those if present.
@@ -381,7 +387,7 @@ def main():
                     log.error(f"Additionally failed to notify about the error: {notify_err}")
                 raise
 
-            time.sleep(SLEEP_TIME)
+            time.sleep(conf.sleep_time)
 
 if __name__ == "__main__":
     main()
