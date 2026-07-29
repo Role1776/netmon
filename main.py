@@ -3,6 +3,7 @@ import sys
 import json
 import html
 import logging
+from datetime import datetime, timezone
 import graphs
 import config as cfg
 import sqlite
@@ -168,6 +169,37 @@ def _error_alert_message(exc: Exception) -> str:
         "(journalctl -u netmon) for full details."
     )
 
+
+def _outage_down_alert_message(conf: "cfg.Config") -> str:
+    return (
+        "<b>🔴 Outage detected</b>\n\n"
+        f"The speed test itself has failed for {conf.outage_consecutive_readings} "
+        "consecutive cycles in a row. This looks like your actual internet "
+        "connection is down, not a netmon problem — monitoring will keep "
+        "trying every cycle and will post again once it's back."
+    )
+
+
+def _outage_degraded_alert_message(metric: "models.NetworkMetric", conf: "cfg.Config") -> str:
+    return (
+        "<b>🟡 Degraded connection detected</b>\n\n"
+        f"<code>{metric.download / 10**6:.1f} Mbps down, {metric.ping:.1f} ms ping</code>\n\n"
+        f"That's below the configured thresholds ({conf.outage_download_threshold_mbps:.0f} Mbps / "
+        f"{conf.outage_ping_threshold_ms:.0f} ms) for {conf.outage_consecutive_readings} readings in a row. "
+        "Could be your ISP, could be someone hogging the line — worth a look."
+    )
+
+
+def _outage_recovery_alert_message(previous_state: str, duration_seconds: float) -> str:
+    minutes = int(duration_seconds // 60)
+    if minutes < 60:
+        duration_str = f"{minutes} min" if minutes > 0 else "under a minute"
+    else:
+        duration_str = f"{minutes // 60}h {minutes % 60}m"
+    label = "Outage" if previous_state == "down" else "Degraded connection"
+    return f"<b>✅ {label} resolved</b>\n\nBack to normal after about {duration_str}."
+
+
 log = logging.getLogger("netmon")
 
 
@@ -208,6 +240,18 @@ def main():
     if conf.test_ai:
         log.info("--test-ai passed: forcing a detailed AI report on the first cycle, then resuming normal schedule.")
 
+    # Instant outage/degradation alerting state. Tracked across loop
+    # iterations, separate from the crash-on-infra-failure handling below:
+    # the speed test genuinely failing, or reporting a genuinely bad
+    # connection, is the exact condition this tool exists to detect -- it
+    # is not a bug in netmon itself, so it does not crash the process the
+    # way an nmap/database/notifier failure does. Instead it alerts once
+    # per episode (not every cycle, to avoid spam) and again on recovery.
+    consecutive_bad_readings = 0
+    outage_alerted = False
+    outage_started_at: datetime | None = None
+    connection_state = "ok"  # one of "ok", "degraded", "down"
+
     with (
         sqlite.DB.init(conf.db_path) as database,
         ai.Client.init(conf.ai_api_key, conf.model, conf.base_url) as netmon_ai,
@@ -217,7 +261,52 @@ def main():
             try:
                 t.send_chat_action(ChatAction.TYPING)
 
-                metric = r.run_speedtest()
+                try:
+                    metric = r.run_speedtest()
+                except Exception as speedtest_exc:
+                    log.error(f"Speed test failed: {speedtest_exc}")
+                    consecutive_bad_readings += 1
+                    if outage_started_at is None:
+                        outage_started_at = datetime.now(timezone.utc)
+                    if consecutive_bad_readings >= conf.outage_consecutive_readings and not outage_alerted:
+                        try:
+                            t.send_message(_outage_down_alert_message(conf))
+                        except Exception as notify_err:
+                            log.error(f"Failed to send outage alert: {notify_err}")
+                        outage_alerted = True
+                    connection_state = "down"
+                    time.sleep(conf.sleep_time)
+                    continue  # no metric this cycle -- skip device scan/db/reports entirely
+
+                dl_speed_check = metric.download / 10**6
+                is_degraded = (
+                    dl_speed_check < conf.outage_download_threshold_mbps
+                    or metric.ping > conf.outage_ping_threshold_ms
+                )
+
+                if is_degraded:
+                    consecutive_bad_readings += 1
+                    if outage_started_at is None:
+                        outage_started_at = datetime.now(timezone.utc)
+                    if consecutive_bad_readings >= conf.outage_consecutive_readings and not outage_alerted:
+                        try:
+                            t.send_message(_outage_degraded_alert_message(metric, conf))
+                        except Exception as notify_err:
+                            log.error(f"Failed to send degraded-connection alert: {notify_err}")
+                        outage_alerted = True
+                    connection_state = "degraded"
+                else:
+                    if outage_alerted and outage_started_at is not None:
+                        duration_seconds = (datetime.now(timezone.utc) - outage_started_at).total_seconds()
+                        try:
+                            t.send_message(_outage_recovery_alert_message(connection_state, duration_seconds))
+                        except Exception as notify_err:
+                            log.error(f"Failed to send recovery alert: {notify_err}")
+                    consecutive_bad_readings = 0
+                    outage_alerted = False
+                    outage_started_at = None
+                    connection_state = "ok"
+
                 all_devices = r.run_devices_scan()
 
                 with database.transaction():
