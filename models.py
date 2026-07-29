@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-import uuid 
+import uuid
 from uuid_extensions import uuid7str
 from datetime import timezone
 from datetime import datetime
+from typing import Optional
 
 @dataclass(frozen=True, slots=True)
 class NetworkMetric:
@@ -62,25 +63,34 @@ class NetworkMetric:
 class NetworkDevice:
     id: uuid.UUID
     ip: str
-    latency_ms: float 
-    timestamp: datetime 
+    latency_ms: float
+    timestamp: datetime
+    mac: Optional[str] = None
+    vendor: Optional[str] = None
+    hostname: Optional[str] = None
 
     @classmethod
     def create(
         cls,
         ip: str,
         latency_ms: float,
+        mac: Optional[str] = None,
+        vendor: Optional[str] = None,
+        hostname: Optional[str] = None,
     ) -> "NetworkDevice":
         if not ip or not ip.strip():
             raise ValueError("IP cannot be empty")
         if latency_ms < 0:
             raise ValueError("Latency must be non-negative")
-    
+
         return cls(
             id=uuid.UUID(uuid7str()),
             ip=ip,
             latency_ms=latency_ms,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
+            mac=mac,
+            vendor=vendor,
+            hostname=hostname,
         )
 
 

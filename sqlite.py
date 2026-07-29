@@ -119,12 +119,15 @@ class DB:
         scan_id   = uuid.UUID(uuid7str())
         ips       = json.dumps([d.ip         for d in devices])
         latencies = json.dumps([d.latency_ms for d in devices])
+        macs      = json.dumps([d.mac        for d in devices])
+        vendors   = json.dumps([d.vendor     for d in devices])
+        hostnames = json.dumps([d.hostname   for d in devices])
 
         with self.transaction():
             self.conn.execute("""
-                INSERT INTO device_scans (id, ips, latencies)
-                VALUES (?, ?, ?)
-            """, (str(scan_id), ips, latencies))
+                INSERT INTO device_scans (id, ips, latencies, macs, vendors, hostnames)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (str(scan_id), ips, latencies, macs, vendors, hostnames))
         return scan_id
 
     def add_speedtest(self, speedtest: models.SpeedTest):
@@ -207,6 +210,64 @@ class DB:
             device_counts.append(len(json.loads(row[10])))
 
         return metrics, device_counts
+
+    def get_latest_devices_with_novelty(self, lookback_days: int = 14) -> list[dict]:
+        """
+        Returns the most recent device scan's devices, each annotated with
+        whether its MAC address has been seen in any earlier scan within
+        the lookback window — i.e. whether it's new to the network.
+        Devices without a resolvable MAC (nmap only resolves MAC for hosts
+        on the same local subnet) are never flagged as new, since there's
+        no reliable identity to compare against.
+        """
+        try:
+            with closing(self.conn.cursor()) as cursor:
+                cursor.execute("""
+                    SELECT id, ips, latencies, macs, vendors, hostnames
+                    FROM device_scans
+                    ORDER BY rowid DESC
+                    LIMIT 1
+                """)
+                latest = cursor.fetchone()
+                if latest is None:
+                    return []
+
+                latest_id = latest[0]
+                ips       = json.loads(latest[1])
+                latencies = json.loads(latest[2])
+                macs      = json.loads(latest[3])
+                vendors   = json.loads(latest[4])
+                hostnames = json.loads(latest[5])
+
+                cursor.execute("""
+                    SELECT ds.macs
+                    FROM device_scans ds
+                    JOIN speedtest st ON st.device_scans_id = ds.id
+                    JOIN metrics m ON m.id = st.metrics_id
+                    WHERE ds.id != ?
+                      AND m.timestamp > DATETIME('now', ?)
+                """, (latest_id, f'-{lookback_days} days'))
+
+                known_macs: set[str] = set()
+                for (macs_json,) in cursor.fetchall():
+                    for m in json.loads(macs_json):
+                        if m:
+                            known_macs.add(m)
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to get latest devices with novelty: {e}")
+
+        devices = []
+        for i, ip in enumerate(ips):
+            mac = macs[i] if i < len(macs) else None
+            devices.append({
+                "ip": ip,
+                "mac": mac,
+                "vendor": vendors[i] if i < len(vendors) else None,
+                "hostname": hostnames[i] if i < len(hostnames) else None,
+                "latency_ms": latencies[i] if i < len(latencies) else None,
+                "is_new": bool(mac) and mac not in known_macs,
+            })
+        return devices
 
     def close(self):
         self.conn.close()
