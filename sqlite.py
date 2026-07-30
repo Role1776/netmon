@@ -192,5 +192,32 @@ class DB:
 
         return metrics, device_counts
 
+    def prune_old_data(self, retention_days: int) -> tuple[int, int]:
+        """
+        Deletes metrics (and their cascaded speedtest rows) older than
+        retention_days, then cleans up any device_scans rows left orphaned
+        by that cascade -- device_scans has no timestamp of its own, but in
+        practice every scan is created in the same transaction as exactly
+        one metric via speedtest, so "no linked speedtest row remains" is
+        an equivalent age check. Returns (metrics_deleted, device_scans_deleted).
+        """
+        try:
+            with self.transaction():
+                cursor = self.conn.execute(
+                    "DELETE FROM metrics WHERE timestamp < DATETIME('now', ?)",
+                    (f'-{retention_days} days',)
+                )
+                metrics_deleted = cursor.rowcount
+
+                cursor = self.conn.execute(
+                    "DELETE FROM device_scans WHERE id NOT IN "
+                    "(SELECT device_scans_id FROM speedtest WHERE device_scans_id IS NOT NULL)"
+                )
+                device_scans_deleted = cursor.rowcount
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to prune old data: {e}")
+
+        return metrics_deleted, device_scans_deleted
+
     def close(self):
         self.conn.close()
