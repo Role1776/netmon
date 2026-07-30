@@ -250,6 +250,14 @@ Expect periodic speed drops whenever local freeloaders stream 4K movies or the I
 
 ---
 
+## Reliability
+
+Speed test, device scan, database, or notifier-delivery failures are **never silently retried**. If one of these fails, netmon makes a best-effort attempt to post an alert to your configured notifier — so the failure is visible without checking server logs — then crashes rather than looping on a broken state. Check the service logs (`journalctl -u netmon` if running under `systemd`, or wherever your process manager sends output) for the full traceback, and your process manager's restart policy will bring it back up.
+
+This is deliberately different from how a *slow or unreachable AI backend* is handled: that degrades gracefully (the report still sends, just without AI commentary) rather than crashing, since a flaky LLM endpoint isn't the kind of infrastructure failure worth stopping the whole monitor over.
+
+---
+
 ## Project Structure
 
 ```text
