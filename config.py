@@ -6,6 +6,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEFAULT_REQUEST_TIMEOUT = 30
+DEFAULT_DEVICE_MISSING_LOOKBACK_DAYS = 3
+DEFAULT_DEVICE_MISSING_RELIABILITY = 0.8
+DEFAULT_DEVICE_MISSING_CONSECUTIVE_READINGS = 2
 
 class Config:
     def __init__(
@@ -18,7 +21,10 @@ class Config:
         tg_bot_token: str = "",
         tg_chat_id: str = "",
         discord_webhook_url: str = "",
-        request_timeout: int = DEFAULT_REQUEST_TIMEOUT
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+        device_missing_lookback_days: int = DEFAULT_DEVICE_MISSING_LOOKBACK_DAYS,
+        device_missing_reliability: float = DEFAULT_DEVICE_MISSING_RELIABILITY,
+        device_missing_consecutive_readings: int = DEFAULT_DEVICE_MISSING_CONSECUTIVE_READINGS,
     ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
@@ -29,6 +35,9 @@ class Config:
         self.tg_chat_id: str = tg_chat_id
         self.discord_webhook_url: str = discord_webhook_url
         self.request_timeout: int = request_timeout
+        self.device_missing_lookback_days: int = device_missing_lookback_days
+        self.device_missing_reliability: float = device_missing_reliability
+        self.device_missing_consecutive_readings: int = device_missing_consecutive_readings
 
     @staticmethod
     def _parse_args():
@@ -72,6 +81,27 @@ class Config:
         if request_timeout <= 0:
             raise RuntimeError(f"REQUEST_TIMEOUT must be positive, got: {request_timeout}")
 
+        try:
+            device_missing_lookback_days = int(os.getenv("DEVICE_MISSING_LOOKBACK_DAYS", DEFAULT_DEVICE_MISSING_LOOKBACK_DAYS))
+        except ValueError:
+            raise RuntimeError(f"DEVICE_MISSING_LOOKBACK_DAYS must be an integer, got: {os.getenv('DEVICE_MISSING_LOOKBACK_DAYS')!r}")
+        if device_missing_lookback_days <= 0:
+            raise RuntimeError(f"DEVICE_MISSING_LOOKBACK_DAYS must be positive, got: {device_missing_lookback_days}")
+
+        try:
+            device_missing_reliability = float(os.getenv("DEVICE_MISSING_RELIABILITY", DEFAULT_DEVICE_MISSING_RELIABILITY))
+        except ValueError:
+            raise RuntimeError(f"DEVICE_MISSING_RELIABILITY must be a number, got: {os.getenv('DEVICE_MISSING_RELIABILITY')!r}")
+        if not (0 < device_missing_reliability <= 1):
+            raise RuntimeError(f"DEVICE_MISSING_RELIABILITY must be between 0 (exclusive) and 1 (inclusive), got: {device_missing_reliability}")
+
+        try:
+            device_missing_consecutive_readings = int(os.getenv("DEVICE_MISSING_CONSECUTIVE_READINGS", DEFAULT_DEVICE_MISSING_CONSECUTIVE_READINGS))
+        except ValueError:
+            raise RuntimeError(f"DEVICE_MISSING_CONSECUTIVE_READINGS must be an integer, got: {os.getenv('DEVICE_MISSING_CONSECUTIVE_READINGS')!r}")
+        if device_missing_consecutive_readings <= 0:
+            raise RuntimeError(f"DEVICE_MISSING_CONSECUTIVE_READINGS must be positive, got: {device_missing_consecutive_readings}")
+
         if notifier == "telegram":
             if tg_bot_token.strip() == "":
                 raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
@@ -84,5 +114,6 @@ class Config:
         return cls(
             ai_key, db_path, model, base_url, notifier,
             tg_bot_token, tg_chat_id, discord_webhook_url,
-            request_timeout,
+            request_timeout, device_missing_lookback_days,
+            device_missing_reliability, device_missing_consecutive_readings,
         )

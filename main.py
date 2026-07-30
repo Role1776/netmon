@@ -1,6 +1,7 @@
 import signal
 import sys
 import logging
+from datetime import datetime, timezone
 import graphs
 import config as cfg
 import sqlite
@@ -123,6 +124,36 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 SLEEP_TIME = 1800
 
+
+def _device_label(device: dict) -> str:
+    if device.get("hostname"):
+        return device["hostname"]
+    if device.get("vendor"):
+        return f"{device['vendor']} device"
+    return device["mac"]
+
+
+def _device_missing_alert_message(device: dict, conf: "cfg.Config") -> str:
+    label = _device_label(device)
+    return (
+        "<b>🔌 Device went missing</b>\n\n"
+        f"<code>{label}</code> ({device['mac']}) hasn't been seen for "
+        f"{conf.device_missing_consecutive_readings} consecutive checks, "
+        f"despite being reliably online otherwise. Could be powered off, "
+        "rebooting, or actually gone."
+    )
+
+
+def _device_reappeared_alert_message(device: dict, duration_seconds: float) -> str:
+    label = _device_label(device)
+    minutes = int(duration_seconds // 60)
+    if minutes < 60:
+        duration_str = f"{minutes} min" if minutes > 0 else "under a minute"
+    else:
+        duration_str = f"{minutes // 60}h {minutes % 60}m"
+    return f"<b>✅ Device is back</b>\n\n<code>{label}</code> reappeared after about {duration_str}."
+
+
 log = logging.getLogger("netmon")
 
 
@@ -155,6 +186,13 @@ def main():
 
     counter = 0
 
+    # Per-MAC missing-device alerting state -- the counterpart to the
+    # new-device novelty check. Keyed by MAC; each entry tracks how many
+    # consecutive cycles it's been missing, whether an alert has already
+    # fired for this episode (so we don't spam every cycle), and when it
+    # was first noticed missing (to report a duration on reappearance).
+    missing_device_state: dict[str, dict] = {}
+
     with (
         sqlite.DB.init(conf.db_path) as database,
         ai.Client.init(conf.ai_api_key, conf.model, conf.base_url) as netmon_ai,
@@ -172,6 +210,44 @@ def main():
                 speedtest = models.SpeedTest.create(metric.id, device_scan_id)
                 database.add_speedtest(speedtest)
             log.info(f"Speedtest has been added: {speedtest}")
+
+            missing_now = database.get_missing_devices(
+                conf.device_missing_lookback_days, conf.device_missing_reliability
+            )
+            missing_now_macs = {d["mac"] for d in missing_now}
+
+            for device in missing_now:
+                mac = device["mac"]
+                state = missing_device_state.setdefault(mac, {
+                    "consecutive_missing": 0,
+                    "alerted": False,
+                    "missing_since": None,
+                    "vendor": device["vendor"],
+                    "hostname": device["hostname"],
+                })
+                state["consecutive_missing"] += 1
+                if state["missing_since"] is None:
+                    state["missing_since"] = datetime.now(timezone.utc)
+                if state["consecutive_missing"] >= conf.device_missing_consecutive_readings and not state["alerted"]:
+                    try:
+                        t.send_message(_device_missing_alert_message(device, conf))
+                    except Exception as notify_err:
+                        log.error(f"Failed to send device-missing alert: {notify_err}")
+                    state["alerted"] = True
+
+            for mac in list(missing_device_state.keys()):
+                if mac in missing_now_macs:
+                    continue
+                state = missing_device_state.pop(mac)
+                if state["alerted"]:
+                    duration_seconds = (datetime.now(timezone.utc) - state["missing_since"]).total_seconds()
+                    try:
+                        t.send_message(_device_reappeared_alert_message(
+                            {"mac": mac, "vendor": state["vendor"], "hostname": state["hostname"]},
+                            duration_seconds,
+                        ))
+                    except Exception as notify_err:
+                        log.error(f"Failed to send device-reappeared alert: {notify_err}")
 
             if counter >= 8: #send a detailed report with graph every 4 hours
                 metrics, device_counts = database.get_metrics_with_device_counts()

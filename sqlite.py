@@ -269,5 +269,93 @@ class DB:
             })
         return devices
 
+    def get_missing_devices(self, lookback_days: int = 3, min_reliability: float = 0.8) -> list[dict]:
+        """
+        The counterpart to get_latest_devices_with_novelty: returns MAC
+        addresses that have reliably been on the network over the lookback
+        window (seen in at least min_reliability of scans in that window)
+        but are absent from the most recent scan. Only MACs are tracked
+        (nmap only resolves a MAC for local-subnet hosts), so this can
+        never fire for a device the network can't reliably fingerprint.
+        Returns [] rather than guessing if there aren't enough scans in
+        the window yet to judge reliability.
+
+        Reliability is deliberately computed over a "stable" window that
+        excludes the most recent _RECENT_GRACE_SCANS prior scans (in
+        addition to the latest scan itself, which is only used for the
+        absence check). Without this, a device's own ongoing disappearance
+        drags its historical reliability score down cycle over cycle --
+        by the time enough consecutive-missing cycles had passed to
+        confirm an outage, its reliability would already have fallen below
+        the threshold and it would silently stop being flagged, right when
+        an alert should be firing.
+        """
+        _MIN_SCANS_FOR_RELIABILITY = 3
+        _RECENT_GRACE_SCANS = 3
+
+        try:
+            with closing(self.conn.cursor()) as cursor:
+                cursor.execute("""
+                    SELECT id, macs
+                    FROM device_scans
+                    ORDER BY rowid DESC
+                    LIMIT 1
+                """)
+                latest = cursor.fetchone()
+                if latest is None:
+                    return []
+
+                latest_id = latest[0]
+                latest_macs = {m for m in json.loads(latest[1]) if m}
+
+                cursor.execute("""
+                    SELECT ds.macs, ds.vendors, ds.hostnames
+                    FROM device_scans ds
+                    JOIN speedtest st ON st.device_scans_id = ds.id
+                    JOIN metrics m ON m.id = st.metrics_id
+                    WHERE ds.id != ?
+                      AND m.timestamp > DATETIME('now', ?)
+                    ORDER BY m.timestamp DESC
+                """, (latest_id, f'-{lookback_days} days'))
+                recent_history_rows = cursor.fetchall()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to get missing devices: {e}")
+
+        history_rows = recent_history_rows[_RECENT_GRACE_SCANS:]
+
+        total_scans = len(history_rows)
+        if total_scans < _MIN_SCANS_FOR_RELIABILITY:
+            return []
+
+        mac_counts: dict[str, int] = {}
+        mac_vendor: dict[str, str | None] = {}
+        mac_hostname: dict[str, str | None] = {}
+        for macs_json, vendors_json, hostnames_json in history_rows:
+            macs = json.loads(macs_json)
+            vendors = json.loads(vendors_json)
+            hostnames = json.loads(hostnames_json)
+            for i, mac in enumerate(macs):
+                if not mac:
+                    continue
+                mac_counts[mac] = mac_counts.get(mac, 0) + 1
+                if mac not in mac_vendor and i < len(vendors):
+                    mac_vendor[mac] = vendors[i]
+                if mac not in mac_hostname and i < len(hostnames):
+                    mac_hostname[mac] = hostnames[i]
+
+        missing = []
+        for mac, count in mac_counts.items():
+            if mac in latest_macs:
+                continue
+            reliability = count / total_scans
+            if reliability >= min_reliability:
+                missing.append({
+                    "mac": mac,
+                    "vendor": mac_vendor.get(mac),
+                    "hostname": mac_hostname.get(mac),
+                    "reliability": reliability,
+                })
+        return missing
+
     def close(self):
         self.conn.close()
