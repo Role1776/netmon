@@ -12,3 +12,22 @@ dependencies = [
     "scapy",
     "uuid7",
 ]
+
+# Pinned so CI and local runs report exactly the same findings — an unpinned
+# linter turns CI red on untouched code the day it ships a new rule.
+[dependency-groups]
+dev = [
+    "pyright==1.1.411",
+    "pytest==9.0.1",
+    "ruff==0.16.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+# Deliberately conservative: pyflakes plus the pycodestyle errors that catch
+# real mistakes (undefined names, unused imports, broken except clauses).
+# Style and modernization rules are left off so the linter does not demand a
+# rewrite of existing code. Widen this list in its own dedicated PR.
+select = ["E4", "E7", "E9", "F"]
