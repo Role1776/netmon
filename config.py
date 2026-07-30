@@ -6,6 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEFAULT_REQUEST_TIMEOUT = 30
+DEFAULT_HEARTBEAT_HOST = "1.1.1.1"
+DEFAULT_HEARTBEAT_PORT = 443
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60
+DEFAULT_HEARTBEAT_CONSECUTIVE_FAILURES = 3
 
 class Config:
     def __init__(
@@ -18,7 +22,11 @@ class Config:
         tg_bot_token: str = "",
         tg_chat_id: str = "",
         discord_webhook_url: str = "",
-        request_timeout: int = DEFAULT_REQUEST_TIMEOUT
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+        heartbeat_host: str = DEFAULT_HEARTBEAT_HOST,
+        heartbeat_port: int = DEFAULT_HEARTBEAT_PORT,
+        heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        heartbeat_consecutive_failures: int = DEFAULT_HEARTBEAT_CONSECUTIVE_FAILURES,
     ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
@@ -29,6 +37,10 @@ class Config:
         self.tg_chat_id: str = tg_chat_id
         self.discord_webhook_url: str = discord_webhook_url
         self.request_timeout: int = request_timeout
+        self.heartbeat_host: str = heartbeat_host
+        self.heartbeat_port: int = heartbeat_port
+        self.heartbeat_interval_seconds: int = heartbeat_interval_seconds
+        self.heartbeat_consecutive_failures: int = heartbeat_consecutive_failures
 
     @staticmethod
     def _parse_args():
@@ -72,6 +84,31 @@ class Config:
         if request_timeout <= 0:
             raise RuntimeError(f"REQUEST_TIMEOUT must be positive, got: {request_timeout}")
 
+        heartbeat_host = os.getenv("HEARTBEAT_HOST", DEFAULT_HEARTBEAT_HOST)
+        if heartbeat_host.strip() == "":
+            raise RuntimeError("HEARTBEAT_HOST cannot be empty")
+
+        try:
+            heartbeat_port = int(os.getenv("HEARTBEAT_PORT", DEFAULT_HEARTBEAT_PORT))
+        except ValueError:
+            raise RuntimeError(f"HEARTBEAT_PORT must be an integer, got: {os.getenv('HEARTBEAT_PORT')!r}")
+        if not (0 < heartbeat_port < 65536):
+            raise RuntimeError(f"HEARTBEAT_PORT must be between 1 and 65535, got: {heartbeat_port}")
+
+        try:
+            heartbeat_interval_seconds = int(os.getenv("HEARTBEAT_INTERVAL_SECONDS", DEFAULT_HEARTBEAT_INTERVAL_SECONDS))
+        except ValueError:
+            raise RuntimeError(f"HEARTBEAT_INTERVAL_SECONDS must be an integer, got: {os.getenv('HEARTBEAT_INTERVAL_SECONDS')!r}")
+        if heartbeat_interval_seconds <= 0:
+            raise RuntimeError(f"HEARTBEAT_INTERVAL_SECONDS must be positive, got: {heartbeat_interval_seconds}")
+
+        try:
+            heartbeat_consecutive_failures = int(os.getenv("HEARTBEAT_CONSECUTIVE_FAILURES", DEFAULT_HEARTBEAT_CONSECUTIVE_FAILURES))
+        except ValueError:
+            raise RuntimeError(f"HEARTBEAT_CONSECUTIVE_FAILURES must be an integer, got: {os.getenv('HEARTBEAT_CONSECUTIVE_FAILURES')!r}")
+        if heartbeat_consecutive_failures <= 0:
+            raise RuntimeError(f"HEARTBEAT_CONSECUTIVE_FAILURES must be positive, got: {heartbeat_consecutive_failures}")
+
         if notifier == "telegram":
             if tg_bot_token.strip() == "":
                 raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
@@ -84,5 +121,6 @@ class Config:
         return cls(
             ai_key, db_path, model, base_url, notifier,
             tg_bot_token, tg_chat_id, discord_webhook_url,
-            request_timeout,
+            request_timeout, heartbeat_host, heartbeat_port,
+            heartbeat_interval_seconds, heartbeat_consecutive_failures,
         )

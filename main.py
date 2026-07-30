@@ -1,6 +1,7 @@
 import signal
 import sys
 import logging
+from datetime import datetime, timezone
 import graphs
 import config as cfg
 import sqlite
@@ -128,7 +129,70 @@ log = logging.getLogger("netmon")
 
 def sigterm_handler(signum, frame):
     log.info(f"Received termination signal: {signum}. Exiting gracefully.")
-    sys.exit(0) 
+    sys.exit(0)
+
+
+def _heartbeat_down_alert_message(conf: "cfg.Config") -> str:
+    return (
+        "<b>🔴 Connectivity heartbeat unreachable</b>\n\n"
+        f"{conf.heartbeat_consecutive_failures} consecutive checks against "
+        f"<code>{conf.heartbeat_host}:{conf.heartbeat_port}</code> have failed "
+        "between full speed test cycles. This looks like the connection is "
+        "down right now -- a full report will follow on the next scheduled cycle."
+    )
+
+
+def _heartbeat_recovered_alert_message(duration_seconds: float) -> str:
+    minutes = int(duration_seconds // 60)
+    if minutes < 60:
+        duration_str = f"{minutes} min" if minutes > 0 else "under a minute"
+    else:
+        duration_str = f"{minutes // 60}h {minutes % 60}m"
+    return f"<b>✅ Connectivity heartbeat recovered</b>\n\nReachable again after about {duration_str}."
+
+
+def _wait_with_heartbeat(t: Notifier, r: runner.Runner, conf: "cfg.Config", heartbeat_state: dict, total_seconds: float):
+    """
+    Sleeps for total_seconds like the plain time.sleep() this replaces, but
+    in heartbeat_interval_seconds chunks, doing a lightweight TCP-connect
+    reachability check after each chunk. This exists to catch and alert on
+    short outages that would otherwise resolve before the next full speed
+    test cycle -- SLEEP_TIME can be 30+ minutes, but a real outage lasting
+    a few minutes is exactly the kind of thing this tool should still
+    notice. Deliberately single-threaded (no background thread) to match
+    the rest of this codebase and avoid any concurrency concerns with the
+    shared sqlite connection or notifier HTTP calls.
+    """
+    elapsed = 0.0
+    while elapsed < total_seconds:
+        chunk = min(conf.heartbeat_interval_seconds, total_seconds - elapsed)
+        time.sleep(chunk)
+        elapsed += chunk
+
+        latency = r.ping_host(conf.heartbeat_host, conf.heartbeat_port)
+        if latency is None:
+            heartbeat_state["consecutive_failures"] += 1
+            if heartbeat_state["down_since"] is None:
+                heartbeat_state["down_since"] = datetime.now(timezone.utc)
+            if (
+                heartbeat_state["consecutive_failures"] >= conf.heartbeat_consecutive_failures
+                and not heartbeat_state["alerted"]
+            ):
+                try:
+                    t.send_message(_heartbeat_down_alert_message(conf))
+                except Exception as notify_err:
+                    log.error(f"Failed to send heartbeat-down alert: {notify_err}")
+                heartbeat_state["alerted"] = True
+        else:
+            if heartbeat_state["alerted"]:
+                duration_seconds = (datetime.now(timezone.utc) - heartbeat_state["down_since"]).total_seconds()
+                try:
+                    t.send_message(_heartbeat_recovered_alert_message(duration_seconds))
+                except Exception as notify_err:
+                    log.error(f"Failed to send heartbeat-recovered alert: {notify_err}")
+            heartbeat_state["consecutive_failures"] = 0
+            heartbeat_state["alerted"] = False
+            heartbeat_state["down_since"] = None
 
 
 
@@ -154,6 +218,13 @@ def main():
     r = runner.Runner()
 
     counter = 0
+
+    # Connectivity heartbeat state, tracked across loop iterations.
+    heartbeat_state = {
+        "consecutive_failures": 0,
+        "alerted": False,
+        "down_since": None,
+    }
 
     with (
         sqlite.DB.init(conf.db_path) as database,
@@ -242,7 +313,7 @@ def main():
 
             counter += 1
 
-            time.sleep(SLEEP_TIME)
+            _wait_with_heartbeat(t, r, conf, heartbeat_state, SLEEP_TIME)
 
 if __name__ == "__main__":
     main()

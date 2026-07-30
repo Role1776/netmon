@@ -194,6 +194,19 @@ Since netmon exists to track *trends*, consistency matters more than peak number
 
 ---
 
+## Connectivity Heartbeat
+
+Full speed test cycles can be 30+ minutes apart, so a short outage could start and fully resolve without ever being noticed. Between cycles, netmon runs a lightweight TCP connect (not ICMP — avoids needing root) to `HEARTBEAT_HOST:HEARTBEAT_PORT` every `HEARTBEAT_INTERVAL_SECONDS`, and alerts once after `HEARTBEAT_CONSECUTIVE_FAILURES` failed checks in a row, then again on recovery.
+
+| Variable | Description |
+| :--- | :--- |
+| `HEARTBEAT_HOST` | *Optional.* Host to check reachability against (default `1.1.1.1`) |
+| `HEARTBEAT_PORT` | *Optional.* Port to connect to (1–65535, default `443`) |
+| `HEARTBEAT_INTERVAL_SECONDS` | *Optional.* Seconds between heartbeat checks while waiting for the next full cycle (positive integer, default `60`) |
+| `HEARTBEAT_CONSECUTIVE_FAILURES` | *Optional.* Consecutive failed checks before alerting (positive integer, default `3`) |
+
+---
+
 ## Example Output
 
 ### Hourly Short Status Update

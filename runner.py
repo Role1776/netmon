@@ -1,7 +1,9 @@
 from uuid_extensions import uuid7
 import re
 import logging
+import socket
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 import models
 from typing import Optional
@@ -58,6 +60,23 @@ class _SpeedTestResponse(BaseModel):
 
 
 class Runner:
+    @staticmethod
+    def ping_host(host: str, port: int = 443, timeout: float = 2.0) -> Optional[float]:
+        """
+        Lightweight reachability check: attempts a TCP connection to
+        host:port and returns the elapsed time in milliseconds, or None if
+        it failed or timed out. Uses a TCP connect rather than an ICMP
+        ping since ICMP typically needs raw-socket (root) privileges this
+        tool doesn't otherwise require.
+        """
+        start = time.monotonic()
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                pass
+        except OSError:
+            return None
+        return (time.monotonic() - start) * 1000
+
     def run_speedtest(self) -> models.NetworkMetric:
         args = ["speedtest", "--secure", "--single", "--json"]
 
