@@ -175,6 +175,8 @@ If `NOTIFIER` is left unset, netmon defaults to Telegram, so existing setups kee
 
 Discord delivery reuses the same report content as Telegram — the existing HTML formatting (`<b>`, `<code>`, `<pre>`) is automatically converted to Discord markdown, so reports render correctly in either service without any changes to the AI prompt.
 
+Reports are sent as an embed on Discord (4096-character limit) rather than plain message content (which Discord hard-caps at 2000), and Telegram messages/captions are safety-net truncated at their own platform limits (4096/1024 chars) — so a longer-than-expected AI report gets a visible `…` truncation instead of being silently cut off mid-sentence.
+
 > [!WARNING]
 > Treat both the Telegram bot token and the Discord webhook URL as secrets — anyone with either can post messages through your bot/webhook. Don't commit them to version control (`.env` is already git-ignored).
 
