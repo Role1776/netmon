@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Role1776/netmon/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Role1776/netmon/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-8bc34a?style=for-the-badge" alt="License MIT"></a>
   <img src="https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/uv-managed-DE5FE9?style=for-the-badge&logo=uv&logoColor=white" alt="uv">
@@ -173,6 +174,8 @@ If `NOTIFIER` is left unset, netmon defaults to Telegram, so existing setups kee
    ```
 
 Discord delivery reuses the same report content as Telegram — the existing HTML formatting (`<b>`, `<code>`, `<pre>`) is automatically converted to Discord markdown, so reports render correctly in either service without any changes to the AI prompt.
+
+Reports are sent as an embed on Discord (4096-character limit) rather than plain message content (which Discord hard-caps at 2000), and Telegram messages/captions are safety-net truncated at their own platform limits (4096/1024 chars) — so a longer-than-expected AI report gets a visible `…` truncation instead of being silently cut off mid-sentence.
 
 > [!WARNING]
 > Treat both the Telegram bot token and the Discord webhook URL as secrets — anyone with either can post messages through your bot/webhook. Don't commit them to version control (`.env` is already git-ignored).

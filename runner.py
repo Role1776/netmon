@@ -1,6 +1,4 @@
-from uuid_extensions import uuid7
 import re
-import logging
 import subprocess
 import xml.etree.ElementTree as ET
 import models

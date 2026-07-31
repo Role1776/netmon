@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token: this workflow never needs to write to the repo.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the previous, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-analysis:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # uv reads .python-version and downloads that interpreter itself,
+      # so there is no separate actions/setup-python step.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --locked fails if uv.lock is out of sync with pyproject.toml, which
+      # catches a dependency added without regenerating the lockfile.
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check --output-format=github .
+
+      - name: Type check (pyright)
+        run: uv run pyright
+
+      # Closest thing to a "build" for an app that is never packaged: every
+      # module must import cleanly on a fresh checkout. Catches syntax errors,
+      # bad imports, and import-time crashes that linters do not see.
+      - name: Import smoke test
+        run: >
+          uv run python -c "import ai, config, discord_hook, graphs, main,
+          models, notifier, runner, sqlite, tg"
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      # There is no test suite yet. This job is wired up in advance so that
+      # adding a tests/ directory is all it takes to start gating on it.
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            uv run pytest tests
+          else
+            echo "No tests/ directory yet — nothing to run."
+          fi
