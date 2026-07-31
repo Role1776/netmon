@@ -197,6 +197,18 @@ Since netmon exists to track *trends*, consistency matters more than peak number
 
 ---
 
+## Missing-Device Alerting
+
+Each device scan records a MAC address, vendor, and hostname where resolvable (`nmap` can only resolve a MAC for hosts on the same local subnet it can ARP directly). Using that history, netmon flags a device as "reliably known" once it's been seen in at least `DEVICE_MISSING_RELIABILITY` of scans over the last `DEVICE_MISSING_LOOKBACK_DAYS` — if a reliably-known device then vanishes for `DEVICE_MISSING_CONSECUTIVE_READINGS` consecutive checks, netmon sends an instant alert, and another once it reappears with how long it was gone. A device with no resolvable MAC is never flagged, since there's no reliable identity to track.
+
+| Variable | Description |
+| :--- | :--- |
+| `DEVICE_MISSING_LOOKBACK_DAYS` | *Optional.* How far back to look when judging whether a device is reliably known (positive integer, default `3`) |
+| `DEVICE_MISSING_RELIABILITY` | *Optional.* Fraction of scans in the lookback window a device must appear in to count as reliably known (0 exclusive–1 inclusive, default `0.8`) |
+| `DEVICE_MISSING_CONSECUTIVE_READINGS` | *Optional.* Consecutive missing checks before alerting (positive integer, default `2`) |
+
+---
+
 ## Example Output
 
 ### Hourly Short Status Update
