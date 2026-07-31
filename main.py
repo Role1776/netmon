@@ -121,8 +121,6 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 
 <b>Current status:</b> {status_text}"""
 
-SLEEP_TIME = 1800
-
 log = logging.getLogger("netmon")
 
 
@@ -153,7 +151,15 @@ def main():
         t = tg.Bot.init(conf.tg_bot_token, conf.tg_chat_id, conf.request_timeout)
     r = runner.Runner()
 
-    counter = 0
+    # Normally starts at 0 and climbs to conf.report_cycle_count before the
+    # first detailed report fires. --test-ai starts it already at threshold
+    # so the very first cycle exercises the AI + graph + notifier path; the
+    # detailed-report branch resets counter back to 0 on completion, so
+    # every cycle after that follows the normal schedule automatically —
+    # no config to remember to revert afterward.
+    counter = conf.report_cycle_count if conf.test_ai else 0
+    if conf.test_ai:
+        log.info("--test-ai passed: forcing a detailed AI report on the first cycle, then resuming normal schedule.")
 
     with (
         sqlite.DB.init(conf.db_path) as database,
@@ -173,7 +179,7 @@ def main():
                 database.add_speedtest(speedtest)
             log.info(f"Speedtest has been added: {speedtest}")
 
-            if counter >= 8: #send a detailed report with graph every 4 hours
+            if counter >= conf.report_cycle_count: #send a detailed report with graph every N cycles
                 metrics, device_counts = database.get_metrics_with_device_counts()
 
                 user_message = ""
@@ -193,7 +199,7 @@ def main():
 
                 t.send_chat_action(ChatAction.TYPING)
                 try:
-                    report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT)
+                    report = netmon_ai.send_message(user_message, REPORT_SYSTEM_PROMPT, context_size=conf.ai_context_size)
                     report = report.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
                 except Exception as e:
                     # AI backend down/unreachable/misconfigured: don't lose the
@@ -242,7 +248,7 @@ def main():
 
             counter += 1
 
-            time.sleep(SLEEP_TIME)
+            time.sleep(conf.sleep_time)
 
 if __name__ == "__main__":
     main()

@@ -32,13 +32,13 @@ Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend g
 
 ## Features & Workflow
 
-Every 30 minutes (`SLEEP_TIME` in `main.py`, default 1800 seconds):
+Every `SLEEP_TIME` seconds (default 1800 = 30 min, configurable):
 
 1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (see [the note on measurement mode](#a-note-on-measurement-mode)).
 2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
 3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
 4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
-5. **24h AI Report:** Every 8th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
+5. **24h AI Report:** Every `REPORT_CYCLE_COUNT` cycles (default 8, i.e. ~4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
 
 ---
 
@@ -130,6 +130,9 @@ cp .env.example .env
 | `DISCORD_WEBHOOK_URL` | Discord channel webhook URL — required if `NOTIFIER=discord` |
 | `DB_PATH` | SQLite database file path (e.g. `metrics.sql`) |
 | `REQUEST_TIMEOUT` | *Optional.* HTTP timeout in seconds for Telegram/Discord requests (positive integer, default `30`) |
+| `SLEEP_TIME` | *Optional.* Seconds between each speed test + device scan cycle (positive integer, default `1800`) |
+| `REPORT_CYCLE_COUNT` | *Optional.* How many cycles between detailed AI reports with graph (positive integer, default `8`) |
+| `AI_CONTEXT_SIZE` | *Optional.* Sets Ollama's `num_ctx` per-request, to stop a local model's default context window from silently truncating a long prompt + a day of history. No effect on cloud OpenAI — leave unset unless self-hosting the AI backend. |
 
 > [!TIP]
 > **You're not locked into OpenAI.** `ai.py` talks to any OpenAI-compatible endpoint, so a local inference server (e.g. [Ollama](https://ollama.com), LM Studio) works too — just point `AI_BASE_URL` at it. For report quality that holds up, use a model with **at least ~7B parameters**; a solid local pick is **Gemma 4 12B at 4-bit (QAT) quantization** (`gemma4:12b-it-qat` via Ollama), which fits comfortably on 16GB of RAM.
@@ -144,6 +147,9 @@ uv run main.py
 
 > [!TIP]
 > Run the bot inside `tmux`/`screen` or set it up as a system service (`systemd`/`launchd`) to keep it running 24/7 in the background.
+
+> [!TIP]
+> Pass `--test-ai` (`uv run main.py --test-ai`) to force the very first cycle to run the full detailed report (AI commentary + graph + notifier delivery) immediately, then resume the normal `REPORT_CYCLE_COUNT` schedule automatically — no config to remember to revert afterward. Useful for verifying your AI backend and notifier work without waiting for the regular cadence.
 
 ---
 
