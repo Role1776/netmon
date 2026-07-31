@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEFAULT_REQUEST_TIMEOUT = 30
+DEFAULT_RETENTION_DAYS = 90
 
 class Config:
     def __init__(
@@ -18,7 +19,8 @@ class Config:
         tg_bot_token: str = "",
         tg_chat_id: str = "",
         discord_webhook_url: str = "",
-        request_timeout: int = DEFAULT_REQUEST_TIMEOUT
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+        retention_days: int = DEFAULT_RETENTION_DAYS,
     ):
         self.ai_api_key: str = ai_api_key
         self.db_path: str = db_path
@@ -29,6 +31,7 @@ class Config:
         self.tg_chat_id: str = tg_chat_id
         self.discord_webhook_url: str = discord_webhook_url
         self.request_timeout: int = request_timeout
+        self.retention_days: int = retention_days
 
     @staticmethod
     def _parse_args():
@@ -72,6 +75,13 @@ class Config:
         if request_timeout <= 0:
             raise RuntimeError(f"REQUEST_TIMEOUT must be positive, got: {request_timeout}")
 
+        try:
+            retention_days = int(os.getenv("RETENTION_DAYS", DEFAULT_RETENTION_DAYS))
+        except ValueError:
+            raise RuntimeError(f"RETENTION_DAYS must be an integer, got: {os.getenv('RETENTION_DAYS')!r}")
+        if retention_days <= 0:
+            raise RuntimeError(f"RETENTION_DAYS must be positive, got: {retention_days}")
+
         if notifier == "telegram":
             if tg_bot_token.strip() == "":
                 raise RuntimeError("TG_BOT_TOKEN not found or empty in environment")
@@ -84,5 +94,5 @@ class Config:
         return cls(
             ai_key, db_path, model, base_url, notifier,
             tg_bot_token, tg_chat_id, discord_webhook_url,
-            request_timeout,
+            request_timeout, retention_days,
         )

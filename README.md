@@ -36,7 +36,7 @@ Every 30 minutes (`SLEEP_TIME` in `main.py`, default 1800 seconds):
 
 1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (see [the note on measurement mode](#a-note-on-measurement-mode)).
 2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
-3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
+3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database, automatically pruning rows older than `RETENTION_DAYS` (default 90 days) so the file doesn't grow forever.
 4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
 5. **24h AI Report:** Every 8th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
 
@@ -130,6 +130,7 @@ cp .env.example .env
 | `DISCORD_WEBHOOK_URL` | Discord channel webhook URL — required if `NOTIFIER=discord` |
 | `DB_PATH` | SQLite database file path (e.g. `metrics.sql`) |
 | `REQUEST_TIMEOUT` | *Optional.* HTTP timeout in seconds for Telegram/Discord requests (positive integer, default `30`) |
+| `RETENTION_DAYS` | *Optional.* How many days of metrics/device-scan history to keep before old rows are pruned automatically (positive integer, default `90`) |
 
 > [!TIP]
 > **You're not locked into OpenAI.** `ai.py` talks to any OpenAI-compatible endpoint, so a local inference server (e.g. [Ollama](https://ollama.com), LM Studio) works too — just point `AI_BASE_URL` at it. For report quality that holds up, use a model with **at least ~7B parameters**; a solid local pick is **Gemma 4 12B at 4-bit (QAT) quantization** (`gemma4:12b-it-qat` via Ollama), which fits comfortably on 16GB of RAM.

@@ -174,6 +174,13 @@ def main():
             log.info(f"Speedtest has been added: {speedtest}")
 
             if counter >= 8: #send a detailed report with graph every 4 hours
+                # Housekeeping on the same cadence as the detailed report --
+                # no need to run this every single cycle, and it keeps the
+                # DB from growing forever on a long-running install.
+                metrics_deleted, device_scans_deleted = database.prune_old_data(conf.retention_days)
+                if metrics_deleted or device_scans_deleted:
+                    log.info(f"Pruned {metrics_deleted} metrics and {device_scans_deleted} device_scans older than {conf.retention_days} days.")
+
                 metrics, device_counts = database.get_metrics_with_device_counts()
 
                 user_message = ""
