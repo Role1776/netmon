@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create Netmon administrator password</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card" aria-labelledby="setup-title">
+      <p class="eyebrow">FIRST-RUN SECURITY</p>
+      <h1 id="setup-title">Protect Netmon</h1>
+      <p class="auth-copy">
+        Create the administrator password before any measurements, reports,
+        devices or settings can be viewed. Netmon stores only a salted scrypt
+        hash, never the plaintext password.
+      </p>
+
+      {% if error %}
+      <div class="form-message error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" class="auth-form" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label for="password">Administrator password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          minlength="{{ minimum_length }}"
+          maxlength="256"
+          autocomplete="new-password"
+          required
+          autofocus
+        >
+
+        <label for="password-confirm">Confirm password</label>
+        <input
+          id="password-confirm"
+          name="password_confirm"
+          type="password"
+          minlength="{{ minimum_length }}"
+          maxlength="256"
+          autocomplete="new-password"
+          required
+        >
+
+        <p class="field-help">Minimum {{ minimum_length }} characters.</p>
+        <button type="submit">Create password and open Netmon</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

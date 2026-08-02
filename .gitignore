@@ -4,4 +4,8 @@ __pycache__/
 *.pyc
 .venv/
 .vscode/
-/graphs
+/graphs*.sql
+private-settings.json
+groq.env
+graphs/*.png
+*.py[cod]

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Netmon</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">LOCAL NETWORK MONITOR</p>
+      <h1>Netmon</h1>
+      <p class="subtitle">Measurements and storage remain local; Groq analysis is optional.</p>
+    </div>
+    <div class="header-actions">
+      <span id="service-state" class="status-pill muted">Loading…</span>
+      <button id="run-now" type="button">Run test now</button>
+      <form method="post" action="/logout" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="secondary-button">Sign out</button>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <section class="metric-grid" aria-label="Latest network measurements">
+      <article class="metric-card">
+        <span>Download</span>
+        <strong id="download">—</strong>
+        <small>Mbps</small>
+      </article>
+      <article class="metric-card">
+        <span>Upload</span>
+        <strong id="upload">—</strong>
+        <small>Mbps</small>
+      </article>
+      <article class="metric-card">
+        <span>Latency</span>
+        <strong id="ping">—</strong>
+        <small>ms</small>
+      </article>
+      <article class="metric-card">
+        <span>Devices</span>
+        <strong id="devices">—</strong>
+        <small>active</small>
+      </article>
+    </section>
+
+    <section class="two-column">
+      <article class="panel graph-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LAST 24 HOURS</p>
+            <h2>Connection history</h2>
+          </div>
+          <span id="latest-time" class="muted">No samples yet</span>
+        </div>
+        <div class="graph-frame">
+          <img id="history-graph" alt="24-hour network graph" hidden>
+          <p id="graph-placeholder" class="empty-state">
+            The graph will appear after the first monitoring cycle.
+          </p>
+        </div>
+      </article>
+
+      <article class="panel chat-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LOCAL DATA CHAT</p>
+            <h2>Ask Netmon</h2>
+          </div>
+          <span id="ai-state" class="status-pill muted">Local rules</span>
+        </div>
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <form id="chat-form">
+          <label class="sr-only" for="chat-input">Question</label>
+          <input
+            id="chat-input"
+            name="message"
+            maxlength="500"
+            autocomplete="off"
+            placeholder="How was the connection overnight?"
+          >
+          <button type="submit">Ask</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="two-column settings-row">
+      <article class="panel ai-settings-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">PROTECTED SETTINGS</p>
+            <h2>Remote AI</h2>
+          </div>
+          <span id="ai-key-status" class="status-pill muted">Checking…</span>
+        </div>
+
+        <div class="settings-content">
+          <div class="settings-summary">
+            <div>
+              <span class="setting-label">Provider</span>
+              <strong id="ai-provider">Groq</strong>
+            </div>
+            <div>
+              <span class="setting-label">Model</span>
+              <strong id="ai-model">—</strong>
+            </div>
+            <div>
+              <span class="setting-label">Last test</span>
+              <strong id="ai-last-test">Never</strong>
+            </div>
+          </div>
+
+          <p class="settings-copy">
+            Recognised measurement questions remain local. With Remote AI on,
+            only free-form questions and optional four-hour narratives are sent
+            to Groq. Individual LAN IP addresses are not included in AI context.
+          </p>
+
+          <div id="ai-message" class="form-message" hidden></div>
+
+          <form id="ai-key-form" class="settings-form" autocomplete="off">
+            <label for="ai-api-key">Groq API key</label>
+            <div class="input-action-row">
+              <input
+                id="ai-api-key"
+                name="api_key"
+                type="password"
+                minlength="10"
+                maxlength="512"
+                autocomplete="off"
+                placeholder="Paste a key to activate or replace it"
+              >
+              <button type="submit">Save and test</button>
+            </div>
+            <p class="field-help">
+              A saved key is never returned to this browser. The field remains
+              blank after a successful test and the status changes to API key active.
+            </p>
+          </form>
+
+          <div class="settings-actions">
+            <label class="switch-row" for="ai-enabled">
+              <span>
+                <strong>Enable Remote AI</strong>
+                <small>Available only after a successful key test.</small>
+              </span>
+              <span class="switch-control">
+                <input id="ai-enabled" type="checkbox" disabled>
+                <span class="switch-slider" aria-hidden="true"></span>
+              </span>
+            </label>
+
+            <div class="button-row">
+              <button id="ai-test" type="button" class="secondary-button" disabled>
+                Test active key
+              </button>
+              <button id="ai-remove" type="button" class="danger-button" disabled>
+                Remove key
+              </button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel security-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ACCESS CONTROL</p>
+            <h2>Dashboard security</h2>
+          </div>
+          <span class="status-pill good">Password protected</span>
+        </div>
+        <div class="settings-content">
+          <p>
+            Netmon stores only a salted scrypt password hash. All dashboard data,
+            graph images and control APIs require an authenticated session, and
+            every state-changing request is checked against a session CSRF token.
+          </p>
+          <p class="muted">
+            The current direct address uses LAN HTTP. Put the site behind local
+            HTTPS before entering credentials across an untrusted network.
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="two-column lower">
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">RECENT EVENTS</p>
+            <h2>Report feed</h2>
+          </div>
+        </div>
+        <div id="report-feed" class="report-feed">
+          <p class="empty-state">No reports yet.</p>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LATEST SCAN</p>
+            <h2>Active devices</h2>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>IP address</th>
+                <th>ARP latency</th>
+              </tr>
+            </thead>
+            <tbody id="device-table">
+              <tr><td colspan="2" class="empty-state">No scan yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <span>Netmon authenticated local web edition</span>
+    <span>Auto-refreshes every 30 seconds</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in to Netmon</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card" aria-labelledby="login-title">
+      <p class="eyebrow">LOCAL ADMINISTRATION</p>
+      <h1 id="login-title">Sign in to Netmon</h1>
+      <p class="auth-copy">
+        The dashboard and every data API are protected by the administrator
+        password created during first-run setup.
+      </p>
+
+      {% if error %}
+      <div class="form-message error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" class="auth-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label for="password">Administrator password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          maxlength="256"
+          autocomplete="current-password"
+          required
+          autofocus
+        >
+
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

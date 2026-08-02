@@ -1,9 +1,10 @@
 [project]
 name = "netmon"
 version = "0.1.0"
-description = "Self-hosted local network monitor with 24-hour speed charts & sarcastic AI commentary delivered straight to Telegram."
+description = "Self-hosted local network monitor with a private web dashboard, 24-hour charts and optional AI analysis."
 requires-python = ">=3.13"
 dependencies = [
+    "flask>=3.1,<4",
     "matplotlib",
     "openai",
     "pydantic",
@@ -11,6 +12,7 @@ dependencies = [
     "requests",
     "scapy",
     "uuid7",
+    "waitress>=3,<4",
 ]
 
 # Pinned so CI and local runs report exactly the same findings — an unpinned

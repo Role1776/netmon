@@ -1,0 +1,31 @@
+[Unit]
+Description=Netmon local network measurement collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=netmon
+Group=netmon
+WorkingDirectory=/opt/netmon
+EnvironmentFile=/etc/netmon/netmon.env
+Environment=HOME=/var/lib/netmon
+Environment=UV_CACHE_DIR=/var/lib/netmon/.cache/uv
+Environment=MPLCONFIGDIR=/var/lib/netmon/.cache/matplotlib
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/netmon/.venv/bin/python /opt/netmon/collector.py --env /etc/netmon/netmon.env
+Restart=always
+RestartSec=15
+TimeoutStopSec=30
+UMask=0077
+
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/netmon /opt/netmon/graphs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+[Unit]
+Description=Netmon private local web dashboard
+Wants=network-online.target
+After=network-online.target netmon-collector.service
+
+[Service]
+Type=simple
+User=netmon
+Group=netmon
+WorkingDirectory=/opt/netmon
+EnvironmentFile=/etc/netmon/netmon.env
+Environment=HOME=/var/lib/netmon
+Environment=UV_CACHE_DIR=/var/lib/netmon/.cache/uv
+Environment=MPLCONFIGDIR=/var/lib/netmon/.cache/matplotlib
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/netmon/.venv/bin/python /opt/netmon/web.py --env /etc/netmon/netmon.env
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/netmon
+
+[Install]
+WantedBy=multi-user.target
