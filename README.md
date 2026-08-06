@@ -32,13 +32,14 @@ Every 4 hours, it delivers a **detailed report** complete with a 24-hour trend g
 
 ## Features & Workflow
 
-Every 30 minutes (`SLEEP_TIME` in `main.py`, default 1800 seconds):
+Every `SLEEP_TIME` seconds (default 1800 = 30 min, configurable):
 
 1. **Speed Test:** Measures download/upload speeds, ping latency, ISP, and test server details using `speedtest-cli` (see [the note on measurement mode](#a-note-on-measurement-mode)).
-2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to count active connected devices.
-3. **Local Storage:** Saves metrics & device tallies directly to a local `metrics.sql` SQLite database.
+2. **LAN Scan:** Scans the local subnet using `nmap` ARP scan to identify active devices, including MAC address, vendor, and hostname where resolvable (see [Device Watch](#device-watch)).
+3. **Local Storage:** Saves metrics & device details directly to a local `metrics.sql` SQLite database.
 4. **Status Alert:** Sends a concise status update to your chosen notifier (*"all good"* or *"line is dying"*).
-5. **24h AI Report:** Every 8th cycle (every 4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load and speed fluctuations.
+5. **24h AI Report:** Every `REPORT_CYCLE_COUNT` cycles (default 8, i.e. ~4h), generates a **24-hour trend graph** via `matplotlib` alongside a sarcastic LLM analysis of network load, speed fluctuations, and any notable new devices on the network.
+6. **Instant Outage Alerting:** Watches every cycle for an outright failed speed test or a degraded reading, alerting immediately rather than waiting for the next scheduled report (see [Instant Outage & Degradation Alerting](#instant-outage--degradation-alerting)).
 
 ---
 
@@ -130,6 +131,9 @@ cp .env.example .env
 | `DISCORD_WEBHOOK_URL` | Discord channel webhook URL — required if `NOTIFIER=discord` |
 | `DB_PATH` | SQLite database file path (e.g. `metrics.sql`) |
 | `REQUEST_TIMEOUT` | *Optional.* HTTP timeout in seconds for Telegram/Discord requests (positive integer, default `30`) |
+| `SLEEP_TIME` | *Optional.* Seconds between each speed test + device scan cycle (positive integer, default `1800`) |
+| `REPORT_CYCLE_COUNT` | *Optional.* How many cycles between detailed AI reports with graph (positive integer, default `8`) |
+| `AI_CONTEXT_SIZE` | *Optional.* Sets Ollama's `num_ctx` per-request, to stop a local model's default context window from silently truncating a long prompt + a day of history. No effect on cloud OpenAI — leave unset unless self-hosting the AI backend. |
 
 > [!TIP]
 > **You're not locked into OpenAI.** `ai.py` talks to any OpenAI-compatible endpoint, so a local inference server (e.g. [Ollama](https://ollama.com), LM Studio) works too — just point `AI_BASE_URL` at it. For report quality that holds up, use a model with **at least ~7B parameters**; a solid local pick is **Gemma 4 12B at 4-bit (QAT) quantization** (`gemma4:12b-it-qat` via Ollama), which fits comfortably on 16GB of RAM.
@@ -144,6 +148,9 @@ uv run main.py
 
 > [!TIP]
 > Run the bot inside `tmux`/`screen` or set it up as a system service (`systemd`/`launchd`) to keep it running 24/7 in the background.
+
+> [!TIP]
+> Pass `--test-ai` (`uv run main.py --test-ai`) to force the very first cycle to run the full detailed report (AI commentary + graph + notifier delivery) immediately, then resume the normal `REPORT_CYCLE_COUNT` schedule automatically — no config to remember to revert afterward. Useful for verifying your AI backend and notifier work without waiting for the regular cadence.
 
 ---
 
@@ -195,6 +202,18 @@ Two consequences worth knowing:
 
 Since netmon exists to track *trends*, consistency matters more than peak numbers: keep one measurement method for the lifetime of your database. Swapping the backend mid-history puts a step change in your 24-hour graph that the AI commentary will faithfully report as a real speed jump.
 
+### Jitter & Bufferbloat (Ookla backend only)
+
+Classic `speedtest-cli` has no jitter or packet-loss data. If you instead run netmon against an Ookla-compatible speed test backend that reports those fields, netmon picks them up automatically and surfaces them in both mini and detailed reports, alongside a note from the AI treating high jitter or nonzero packet loss as a sign of bufferbloat — a connection can have great raw Mbps numbers and still feel laggy under load if jitter is high. This is entirely additive: nothing changes in reports if your backend doesn't provide this data.
+
+---
+
+## Device Watch
+
+Every device scan records each device's MAC address, vendor (resolved from `nmap`'s built-in OUI database), and hostname where available. `nmap` can only resolve a MAC for hosts on the same local subnet it can ARP directly — off-subnet or otherwise hidden devices are still counted, just not identified.
+
+Using MAC address history, the detailed AI report includes a **Device Watch** section that flags any device whose MAC hasn't been seen on the network in the last 14 days, alongside a vendor-count breakdown of everything currently online. A device with no resolvable MAC is never flagged as new, since there's no reliable identity to compare against.
+
 ---
 
 ## Example Output
@@ -235,11 +254,15 @@ Server: <b>New York</b>
 Download: 178.5 Mbps
 Upload: 45.2 Mbps
 Ping: 23.1 ms
+Jitter: 4.2 ms | Packet Loss: 0.0%
 Devices Online: 9
 </pre>
 
 <b>24-Hour Dynamics Analysis</b>
 Over the last 24 hours, the download speed averaged <code>140 Mbps</code>, but we saw a massive drop to <code>20 Mbps</code> at 8:00 PM right as device count jumped from <code>4</code> to <code>11 devices</code>. Clearly, someone's hogging the bandwidth or the ISP's mice were busy chewing on the fiber line again. Latency remained stable except for a brief spike during peak hours.
+
+<b>Device Watch</b>
+One new gadget joined the party today: a device with no vendor or hostname info at all — worth a second glance. Everything else is the same suspects as always.
 
 <b>Data Transfer (Latest Test)</b>
 <pre>
@@ -250,6 +273,37 @@ Uploaded: 70.0 MB
 <b>Conclusion</b>
 Expect periodic speed drops whenever local freeloaders stream 4K movies or the ISP potato infrastructure struggles.
 ```
+
+> [!NOTE]
+> The AI is only ever asked for three short text fields (the dynamics analysis, the Device Watch line, and the conclusion) — the surrounding HTML structure above is assembled deterministically in code, not generated by the model. This keeps report formatting consistent regardless of which LLM is behind `AI_BASE_URL`, including smaller local models that would otherwise struggle to reproduce a long literal template reliably. The `Jitter` line only appears when your speed test backend reports it (see [Jitter & Bufferbloat](#jitter--bufferbloat-ookla-backend-only)) — it's silently omitted otherwise.
+
+---
+
+## Instant Outage & Degradation Alerting
+
+Waiting for the next scheduled detailed report to notice an outage could mean a multi-hour delay. netmon instead watches every cycle:
+
+* **Outage:** the speed test itself fails outright for `OUTAGE_CONSECUTIVE_READINGS` consecutive cycles.
+* **Degradation:** a successful reading falls below `OUTAGE_DOWNLOAD_THRESHOLD_MBPS` or above `OUTAGE_PING_THRESHOLD_MS` for the same number of consecutive cycles.
+
+Each fires an alert once per episode (not every cycle, to avoid spam), and again once the connection recovers, with how long the episode lasted.
+
+| Variable | Description |
+| :--- | :--- |
+| `OUTAGE_DOWNLOAD_THRESHOLD_MBPS` | *Optional.* Download speed below which a reading counts as degraded (positive number, default `20`) |
+| `OUTAGE_PING_THRESHOLD_MS` | *Optional.* Ping above which a reading counts as degraded (positive number, default `150`) |
+| `OUTAGE_CONSECUTIVE_READINGS` | *Optional.* Consecutive bad/failed readings before alerting (positive integer, default `2`) |
+
+> [!NOTE]
+> A failing or degraded speed test is treated as the exact condition this tool exists to detect, not a bug in netmon — it alerts and keeps retrying every cycle rather than crashing the process (see [Reliability](#reliability) below for the genuine-infra-failure case, which is handled differently on purpose).
+
+---
+
+## Reliability
+
+Speed test, device scan, database, or notifier-delivery failures are **never silently retried**. If one of these fails, netmon makes a best-effort attempt to post an alert to your configured notifier — so the failure is visible without checking server logs — then crashes rather than looping on a broken state. Check the service logs (`journalctl -u netmon` if running under `systemd`, or wherever your process manager sends output) for the full traceback, and your process manager's restart policy will bring it back up.
+
+This is deliberately different from how a *slow or unreachable AI backend* is handled: that degrades gracefully (the report still sends, just without AI commentary) rather than crashing, since a flaky LLM endpoint isn't the kind of infrastructure failure worth stopping the whole monitor over.
 
 ---
 
