@@ -122,8 +122,22 @@ Traffic used: <b>{download_mb:.1f} MB</b> down / <b>{upload_mb:.1f} MB</b> up
 <b>Current status:</b> {status_text}"""
 
 SLEEP_TIME = 1800
+SPEEDTEST_RETRIES = 3
+SPEEDTEST_RETRY_DELAY = 60
 
 log = logging.getLogger("netmon")
+
+
+def run_speedtest_with_retry(r: runner.Runner) -> models.NetworkMetric:
+    for attempt in range(1, SPEEDTEST_RETRIES + 1):
+        try:
+            return r.run_speedtest()
+        except Exception as e:
+            if attempt == SPEEDTEST_RETRIES:
+                raise
+            log.warning(f"Speedtest attempt {attempt}/{SPEEDTEST_RETRIES} failed, retrying in {SPEEDTEST_RETRY_DELAY}s: {e}")
+            time.sleep(SPEEDTEST_RETRY_DELAY)
+    raise AssertionError("unreachable")
 
 
 def sigterm_handler(signum, frame):
@@ -161,9 +175,24 @@ def main():
     ):
         log.info("The bot has been started.")
         while True:
-            t.send_chat_action(ChatAction.TYPING)
+            try:
+                t.send_chat_action(ChatAction.TYPING)
+            except Exception as e:
+                log.warning(f"Failed to send typing indicator: {e}")
 
-            metric = r.run_speedtest()
+            try:
+                metric = run_speedtest_with_retry(r)
+            except Exception as e:
+                # Network outages and ISP IP rotation are expected on home
+                # connections: skip this cycle instead of crashing the process.
+                log.error(f"Speedtest failed, skipping this cycle: {e}")
+                try:
+                    t.send_message("<b>Speedtest failed</b>\nThe connection was probably down or resetting. Will try again next cycle.")
+                except Exception as notify_error:
+                    log.error(f"Failed to send speedtest failure notice: {notify_error}")
+                time.sleep(SLEEP_TIME)
+                continue
+
             all_devices = r.run_devices_scan()
 
             with database.transaction():
