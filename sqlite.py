@@ -127,7 +127,7 @@ class DB:
                         FROM metrics
                         WHERE timestamp > DATETIME('now', '-24 hours')
                         ORDER BY timestamp DESC
-                        LIMIT 24
+                        LIMIT 48
                     ) ORDER BY timestamp ASC;
                 """)
                 rows = cursor.fetchall()
@@ -165,7 +165,7 @@ class DB:
                         JOIN device_scans ds ON ds.id = st.device_scans_id
                         WHERE m.timestamp > DATETIME('now', '-24 hours')
                         ORDER BY m.timestamp DESC
-                        LIMIT 24
+                        LIMIT 48
                     ) ORDER BY timestamp ASC;
                 """)
                 rows = cursor.fetchall()
