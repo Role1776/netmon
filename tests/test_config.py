@@ -75,6 +75,13 @@ def test_required_discord_var_missing_or_blank_rejected(env, name, blank):
         config.Config.init()
 
 
+@pytest.mark.parametrize("name", ["AI_MODEL", "AI_BASE_URL"])
+def test_missing_ai_var_error_names_the_variable(env, name):
+    env({k: v for k, v in TG.items() if k != name})
+    with pytest.raises(RuntimeError, match=name):
+        config.Config.init()
+
+
 def test_request_timeout_is_read_as_int(env):
     env(TG | {"REQUEST_TIMEOUT": "7"})
     assert config.Config.init().request_timeout == 7
@@ -90,7 +97,7 @@ def test_non_positive_request_timeout_rejected(env, value):
 @pytest.mark.parametrize("value", ["abc", "1.5", ""])
 def test_non_integer_request_timeout_rejected(env, value):
     env(TG | {"REQUEST_TIMEOUT": value})
-    with pytest.raises((RuntimeError, ValueError)):
+    with pytest.raises(RuntimeError):
         config.Config.init()
 
 

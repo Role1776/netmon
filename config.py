@@ -57,9 +57,9 @@ class Config:
         if db_path.strip() == "":
             raise RuntimeError("DB_PATH not found or empty in environment")
         if model.strip() == "":
-            raise RuntimeError("MODEL not found or empty in environment")
+            raise RuntimeError("AI_MODEL not found or empty in environment")
         if base_url.strip() == "":
-            raise RuntimeError("BASE_URL not found or empty in environment")
+            raise RuntimeError("AI_BASE_URL not found or empty in environment")
 
         if notifier not in ("telegram", "discord"):
             raise RuntimeError(f"NOTIFIER must be 'telegram' or 'discord', got: {notifier!r}")
@@ -68,7 +68,11 @@ class Config:
         tg_chat_id = os.getenv("TG_CHAT_ID", "")
         discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
 
-        request_timeout = int(os.getenv("REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT))
+        raw_timeout = os.getenv("REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
+        try:
+            request_timeout = int(raw_timeout)
+        except ValueError:
+            raise RuntimeError(f"REQUEST_TIMEOUT must be an integer, got: {raw_timeout!r}") from None
         if request_timeout <= 0:
             raise RuntimeError(f"REQUEST_TIMEOUT must be positive, got: {request_timeout}")
 
