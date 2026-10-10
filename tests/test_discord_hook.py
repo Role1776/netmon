@@ -57,9 +57,21 @@ def test_html_to_discord_md(html, md, bot, http):
     assert sent_description(bot, http, html) == md
 
 
-@pytest.mark.xfail(strict=True, reason="HTML entities (&lt; &amp;) required by Telegram HTML are not decoded for Discord")
 def test_html_entities_are_decoded(bot, http):
     assert sent_description(bot, http, "<b>a &lt; b &amp; c</b>") == "**a < b & c**"
+
+
+def test_escaped_tag_text_stays_literal(bot, http):
+    assert sent_description(bot, http, "&lt;b&gt;x&lt;/b&gt;") == "<b>x</b>"
+
+
+@pytest.mark.parametrize("html,md", [
+    ("say &quot;hi&quot;", 'say "hi"'),
+    ("a &gt; b", "a > b"),
+    ("<code>a &lt; b</code>", "`a < b`"),
+])
+def test_html_entities_are_decoded_in_context(html, md, bot, http):
+    assert sent_description(bot, http, html) == md
 
 
 def test_send_message_posts_converted_embed(bot, http):

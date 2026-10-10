@@ -1,4 +1,5 @@
 import re
+import html
 import json
 import requests
 
@@ -20,7 +21,7 @@ _DISCORD_EMBED_DESCRIPTION_LIMIT = 4096
 def _html_to_discord_md(text: str) -> str:
     for pattern, replacement in _MD_SUBS:
         text = pattern.sub(replacement, text)
-    return text.strip()
+    return html.unescape(text).strip()
 
 
 def _safe_embed_description(text: str) -> str:
