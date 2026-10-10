@@ -1,6 +1,9 @@
+import dataclasses
 import json
 import sqlite3
 import uuid
+import warnings
+from datetime import datetime, timezone
 
 import pytest
 
@@ -55,6 +58,30 @@ def test_metric_roundtrip(db, make_metric):
     m = make_metric(age_hours=2, share="http://x/1.png", download=123.456, ping=0)
     db.add_metric(m)
     assert db.get_metrics() == [m]
+
+
+def test_add_metric_stores_timestamp_as_space_separated_iso_string(db, make_metric):
+    ts = datetime(2026, 10, 10, 11, 0, 0, 123456, tzinfo=timezone.utc)
+    db.add_metric(dataclasses.replace(make_metric(), timestamp=ts))
+    stored = db.conn.execute("SELECT timestamp FROM metrics").fetchone()[0]
+    assert stored == "2026-10-10 11:00:00.123456+00:00"
+
+
+def test_add_metric_emits_no_deprecation_warning(db, make_metric):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        db.add_metric(make_metric())
+
+
+def test_existing_row_with_old_timestamp_format_is_still_read(db):
+    id_ = uuid.uuid4()
+    db.conn.execute(
+        "INSERT INTO metrics (id, download, upload, ping, timestamp, share, client, server, bytes_sent, bytes_received)"
+        " VALUES (?, 100.0, 20.0, 10.0, '2026-10-10 11:00:00.123456+00:00', 'N/A', 'isp', 'srv', 1, 2)",
+        (str(id_),),
+    )
+    [m] = db.get_metrics()
+    assert (m.id, m.timestamp) == (id_, datetime(2026, 10, 10, 11, 0, 0, 123456, tzinfo=timezone.utc))
 
 
 def test_add_metric_duplicate_id_raises_and_keeps_original(db, make_metric):
