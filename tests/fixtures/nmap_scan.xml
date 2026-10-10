@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sn -oX - 192.168.1.23/24" start="1791633603" startstr="Sat Oct 10 12:00:03 2026" version="7.95" xmloutputversion="1.05">
+<scaninfo type="arp" protocol="ip" numservices="1" services="1"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.1.1" addrtype="ipv4"/>
+<address addr="AA:BB:CC:11:22:33" addrtype="mac" vendor="Example Networks"/>
+<hostnames/>
+<times srtt="2345" rttvar="5000" to="100000"/>
+</host>
+<host><status state="down" reason="no-response" reason_ttl="0"/>
+<address addr="192.168.1.50" addrtype="ipv4"/>
+<hostnames/>
+</host>
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.1.77" addrtype="ipv4"/>
+<address addr="AA:BB:CC:44:55:66" addrtype="mac"/>
+<hostnames/>
+<times srtt="120456" rttvar="30000" to="240000"/>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="192.168.1.23" addrtype="ipv4"/>
+<hostnames/>
+</host>
+<runstats><finished time="1791633604" timestr="Sat Oct 10 12:00:04 2026" elapsed="1.52" summary="Nmap done at Sat Oct 10 12:00:04 2026; 256 IP addresses (3 hosts up) scanned in 1.52 seconds" exit="success"/><hosts up="3" down="253" total="256"/>
+</runstats>
+</nmaprun>
