@@ -94,7 +94,7 @@ class DB:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 str(metric.id), metric.download, metric.upload,
-                metric.ping, metric.timestamp, metric.share,
+                metric.ping, metric.timestamp.isoformat(" "), metric.share,
                 metric.client, metric.server, metric.bytes_sent,
                 metric.bytes_received
             ))
