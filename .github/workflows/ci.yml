@@ -46,7 +46,7 @@ jobs:
       - name: Import smoke test
         run: >
           uv run python -c "import ai, config, discord_hook, graphs, main,
-          models, notifier, runner, sqlite, tg"
+          cycle, models, notifier, runner, sqlite, tg"
 
   tests:
     name: Tests
