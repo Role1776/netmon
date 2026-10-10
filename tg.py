@@ -1,3 +1,6 @@
+import html
+import re
+
 import requests
 
 from notifier import ChatAction
@@ -12,16 +15,13 @@ _TELEGRAM_CAPTION_LIMIT = 1024
 _TELEGRAM_MESSAGE_LIMIT = 4096
 
 
-def _safe_caption(text: str) -> str:
-    if len(text) <= _TELEGRAM_CAPTION_LIMIT:
-        return text
-    return text[: _TELEGRAM_CAPTION_LIMIT - 1].rstrip() + "…"
-
-
-def _safe_message(text: str) -> str:
-    if len(text) <= _TELEGRAM_MESSAGE_LIMIT:
-        return text
-    return text[: _TELEGRAM_MESSAGE_LIMIT - 1].rstrip() + "…"
+def _fit(text: str, limit: int) -> tuple[str, bool]:
+    if len(text) <= limit:
+        return text, True
+    text = html.unescape(re.sub(r"<[^>]*>", "", text))
+    if len(text) <= limit:
+        return text, False
+    return text[: limit - 1].rstrip() + "…", False
 
 
 class Bot:
@@ -39,11 +39,10 @@ class Bot:
 
     def send_message(self, message: str, parse_mode: str = "HTML") -> str:
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": _safe_message(message),
-            "parse_mode": parse_mode
-        }
+        text, formatted = _fit(message, _TELEGRAM_MESSAGE_LIMIT)
+        payload = {"chat_id": self.chat_id, "text": text}
+        if formatted:
+            payload["parse_mode"] = parse_mode
         response = requests.post(url, data=payload, timeout=self.timeout)
 
         if response.status_code != 200:
@@ -52,11 +51,10 @@ class Bot:
 
     def send_photo(self, photo: bytes, caption: str = "", parse_mode: str = "HTML") -> str:
         url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
-        payload = {
-            "chat_id": self.chat_id,
-            "caption": _safe_caption(caption),
-            "parse_mode": parse_mode
-        }
+        text, formatted = _fit(caption, _TELEGRAM_CAPTION_LIMIT)
+        payload = {"chat_id": self.chat_id, "caption": text}
+        if formatted:
+            payload["parse_mode"] = parse_mode
         files = {
             "photo": ("graph.png", photo, "image/png")
         }

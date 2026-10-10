@@ -101,10 +101,42 @@ def test_send_chat_action_error_status_raises(bot, http):
         bot.send_chat_action()
 
 
-@pytest.mark.xfail(strict=True, reason="truncation can leave an unclosed <b>, which Telegram HTML parse_mode rejects")
 @pytest.mark.parametrize("send,field,limit", [("send_message", "text", 4096), ("send_photo", "caption", 1024)])
 def test_truncated_html_stays_well_formed(bot, http, send, field, limit):
     args = ("<b>" + "x" * (limit + 10) + "</b>",)
     getattr(bot, send)(*((b"PNG",) + args if send == "send_photo" else args))
     sent = http.calls[0][1]["data"][field]
     assert sent.count("<b>") == sent.count("</b>")
+
+
+CASES = [("send_message", "text", 4096), ("send_photo", "caption", 1024)]
+
+
+def _send(bot, send, text):
+    getattr(bot, send)(*((b"PNG", text) if send == "send_photo" else (text,)))
+
+
+@pytest.mark.parametrize("send,field,limit", CASES)
+def test_truncated_html_is_plain_text_without_tags(bot, http, send, field, limit):
+    _send(bot, send, "<b>" + "x" * (limit + 10) + "</b>")
+    data = http.calls[0][1]["data"]
+    assert data[field] == "x" * (limit - 1) + "…"
+    assert "parse_mode" not in data
+
+
+@pytest.mark.parametrize("send,field,limit", CASES)
+def test_truncated_text_decodes_entities(bot, http, send, field, limit):
+    _send(bot, send, "<i>a &amp; b &lt;c&gt;</i>" + "x" * limit)
+    sent = http.calls[0][1]["data"][field]
+    assert sent.startswith("a & b <c>x")
+    assert len(sent) == limit
+
+
+@pytest.mark.parametrize("send,field,limit", CASES)
+def test_html_at_limit_is_sent_unchanged_with_parse_mode(bot, http, send, field, limit):
+    text = "<b>" + "x" * (limit - 7) + "</b>"
+    assert len(text) == limit
+    _send(bot, send, text)
+    data = http.calls[0][1]["data"]
+    assert data[field] == text
+    assert data["parse_mode"] == "HTML"
