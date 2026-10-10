@@ -1,3 +1,4 @@
+import html
 import signal
 import sys
 import logging
@@ -140,6 +141,21 @@ def run_speedtest_with_retry(r: runner.Runner) -> models.NetworkMetric:
     raise AssertionError("unreachable")
 
 
+def format_mini_report(metric: models.NetworkMetric, device_count: int, status_text: str) -> str:
+    return MINI_REPORT_TEMPLATE.format(
+        timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+        download=metric.download / 10**6,
+        upload=metric.upload / 10**6,
+        ping=metric.ping,
+        device_count=device_count,
+        client=html.escape(metric.client),
+        server=html.escape(metric.server),
+        download_mb=metric.bytes_received / 10**6,
+        upload_mb=metric.bytes_sent / 10**6,
+        status_text=status_text,
+    )
+
+
 def sigterm_handler(signum, frame):
     log.info(f"Received termination signal: {signum}. Exiting gracefully.")
     sys.exit(0) 
@@ -254,18 +270,7 @@ def main():
                 else:
                     status_text = "At least it works, I guess"
 
-                msg = MINI_REPORT_TEMPLATE.format(
-                    timestamp=metric.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-                    download=dl_speed,
-                    upload=metric.upload / 10**6,
-                    ping=ping,
-                    device_count=len(all_devices),
-                    client=metric.client,
-                    server=metric.server,
-                    download_mb=metric.bytes_received / 10**6,
-                    upload_mb=metric.bytes_sent / 10**6,
-                    status_text=status_text,
-                )
+                msg = format_mini_report(metric, len(all_devices), status_text)
                 t.send_message(msg)
                 log.info("Mini report has been sent.")
 
