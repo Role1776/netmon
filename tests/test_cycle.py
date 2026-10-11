@@ -39,6 +39,7 @@ class Harness:
         self.sleeps: list[int] = []
         self.speedtest_calls = 0
         self.nmap_calls = 0
+        self.nmap_returncode = 0
         self.ai_calls: list[list[dict]] = []
         # Consumed one per speedtest invocation: "fail" or a dict of JSON overrides.
         self.speedtests: list = []
@@ -82,6 +83,8 @@ class Harness:
             return subprocess.CompletedProcess(args, 0, json.dumps(self._speedtest_json | item), "")
         assert args[:3] == ["sudo", "-n", "nmap"], args
         self.nmap_calls += 1
+        if self.nmap_returncode:
+            return subprocess.CompletedProcess(args, self.nmap_returncode, "", "sudo: a password is required")
         return subprocess.CompletedProcess(args, 0, self._nmap_xml, "")
 
     def _openai(self, **kwargs):
@@ -298,3 +301,41 @@ def test_mini_report_status_thresholds(loop, download_mbps, ping, status):
 
     (_, kwargs), = loop.sent()
     assert kwargs["data"]["text"].split("\n")[-1] == f"<b>Current status:</b> {status}"
+
+
+def test_report_send_failure_crashes_main(loop, monkeypatch):
+    # Intended (see PR #9): notifier failures crash the process instead of
+    # being retried silently, so broken delivery is noticed. The speedtest row
+    # is already committed by then.
+    real_post = requests.post
+
+    def post(url, **kwargs):
+        if url.endswith("/sendMessage"):
+            return type("Response", (), {"status_code": 500, "text": "boom"})()
+        return real_post(url, **kwargs)
+
+    monkeypatch.setattr(requests, "post", post)
+    loop.loop_iterations = 1
+    with pytest.raises(RuntimeError):
+        main.main()
+
+    assert loop.sleeps == []
+    assert len(loop.rows("metrics")) == 1
+    assert len(loop.rows("speedtest")) == 1
+
+
+def test_device_scan_failure_crashes_main(loop):
+    # Intended (see PR #9): a failing device scan (e.g. no passwordless sudo
+    # for nmap) is a setup problem and crashes the process, unlike a failed
+    # speedtest, which is expected on home connections and skips the cycle.
+    loop.nmap_returncode = 1
+    loop.loop_iterations = 1
+    with pytest.raises(RuntimeError):
+        main.main()
+
+    assert loop.speedtest_calls == 1
+    assert loop.nmap_calls == 1
+    for table in ("metrics", "device_scans", "speedtest"):
+        assert loop.rows(table) == []
+    assert loop.kinds() == []
+    assert loop.sleeps == []
