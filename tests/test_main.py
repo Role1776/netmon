@@ -1,5 +1,6 @@
 import pytest
 
+import cycle
 import main
 
 
@@ -34,7 +35,7 @@ def ts(m):
 
 
 def test_plain_metric_keeps_report_format(metric):
-    assert main.format_mini_report(metric, 3, "ok") == expected(ts(metric))
+    assert cycle.format_mini_report(metric, 3, "ok") == expected(ts(metric))
 
 
 @pytest.mark.parametrize("name,escaped", [
@@ -46,11 +47,11 @@ def test_client_and_server_names_are_html_escaped(make_metric, name, escaped):
     m = make_metric(download=123.456e6, upload=20e6, ping=12.34,
                     bytes_received=2_500_000, bytes_sent=1_000_000,
                     client=name, server=name)
-    assert main.format_mini_report(m, 3, "ok") == expected(ts(m), client=escaped, server=escaped)
+    assert cycle.format_mini_report(m, 3, "ok") == expected(ts(m), client=escaped, server=escaped)
 
 
 def test_status_text_is_not_escaped(metric):
-    assert main.format_mini_report(metric, 3, "<i>x</i>") == expected(ts(metric), status="<i>x</i>")
+    assert cycle.format_mini_report(metric, 3, "<i>x</i>") == expected(ts(metric), status="<i>x</i>")
 
 
 def test_importing_main_does_not_start_bot():
