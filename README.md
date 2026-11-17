@@ -147,6 +147,10 @@ uv run main.py
 
 ---
 
+## One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Netmon/)
+
 ## Notifications: Telegram or Discord
 
 netmon supports two notification backends, selected via the `NOTIFIER` variable in `.env`. Only one is needed.
